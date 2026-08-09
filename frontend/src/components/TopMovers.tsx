@@ -1,25 +1,15 @@
-import { useEffect, useState } from "react";
-import { api } from "../api";
-import type { Mover, MoversResponse } from "../types";
+import { useState } from "react";
+import type { Mover } from "../types";
 import { changeClass, formatGP, formatPct, formatVolume } from "../lib/format";
+import { useMovers } from "../hooks";
 
 interface Props {
   onSelect: (itemId: number, name: string) => void;
-  refreshKey: number;
 }
 
-export default function TopMovers({ onSelect, refreshKey }: Props) {
+export default function TopMovers({ onSelect }: Props) {
   const [period, setPeriod] = useState<"24h" | "7d" | "30d">("24h");
-  const [data, setData] = useState<MoversResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.movers(period)
-      .then((d) => { if (!cancelled) { setData(d); setError(null); } })
-      .catch((e) => { if (!cancelled) setError(String(e)); });
-    return () => { cancelled = true; };
-  }, [period, refreshKey]);
+  const { data, error } = useMovers(period);
 
   const renderList = (title: string, movers: Mover[], showChange: boolean) => (
     <div className="movers-col">
@@ -64,7 +54,7 @@ export default function TopMovers({ onSelect, refreshKey }: Props) {
           ))}
         </div>
       </div>
-      {error && <p className="muted">Top movers unavailable: {error}</p>}
+      {error && <p className="muted">Top movers unavailable: {error.message}</p>}
       {data && (
         <div className="movers-grid">
           {renderList("Biggest Gainers", data.gainers, true)}

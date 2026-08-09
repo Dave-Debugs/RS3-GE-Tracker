@@ -34,8 +34,9 @@ async def lifespan(app: FastAPI):
     log.info("RS3 GE Tracker backend starting (db=%s)", DATABASE_PATH)
 
     db = Database(DATABASE_PATH)
+    await db.connect()
     repo = Repository(db)
-    app_settings = repo.get_settings(DEFAULT_SETTINGS)
+    app_settings = await repo.get_settings(DEFAULT_SETTINGS)
     client = RS3PriceClient(user_agent=app_settings["user_agent"])
     collector = Collector(repo, client)
     scheduler = CollectorScheduler(repo, collector)
@@ -55,14 +56,14 @@ async def lifespan(app: FastAPI):
 
     log.info("RS3 GE Tracker backend shutting down")
     await scheduler.stop()
-    client.close()
-    db.close()
+    await client.close()
+    await db.close()
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title="RS3 Grand Exchange Tracker",
-        version="1.0.0",
+        version="0.5.5",
         lifespan=lifespan,
     )
     app.add_middleware(

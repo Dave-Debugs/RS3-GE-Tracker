@@ -28,12 +28,12 @@ VALIDATORS = {
 
 
 @router.get("")
-def get_settings(repo: Repository = Depends(get_repo)) -> dict:
-    return repo.get_settings(DEFAULT_SETTINGS)
+async def get_settings(repo: Repository = Depends(get_repo)) -> dict:
+    return await repo.get_settings(DEFAULT_SETTINGS)
 
 
 @router.put("")
-def update_settings(body: SettingsUpdate,
+async def update_settings(body: SettingsUpdate,
                     repo: Repository = Depends(get_repo)) -> dict:
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
@@ -43,5 +43,5 @@ def update_settings(body: SettingsUpdate,
         if validator and not validator(value):
             raise HTTPException(422, f"Invalid value for {key}: {value!r}")
     for key, value in updates.items():
-        repo.set_setting(key, value)
-    return repo.get_settings(DEFAULT_SETTINGS)
+        await repo.set_setting(key, value)
+    return await repo.get_settings(DEFAULT_SETTINGS)

@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/export", tags=["export"])
 
 
 @router.get("/{item_id}")
-def export_item(
+async def export_item(
     item_id: int,
     format: str = Query("csv", pattern="^(csv|json)$"),
     range: str = Query("24h"),
@@ -22,11 +22,11 @@ def export_item(
 ) -> Response:
     if range not in ALLOWED_RANGES:
         raise HTTPException(422, f"range must be one of {sorted(ALLOWED_RANGES)}")
-    item = repo.get_item(item_id)
+    item = await repo.get_item(item_id)
     if not item:
         raise HTTPException(404, f"Unknown item id {item_id}")
     since, now = range_to_since(range)
-    points = merge_sources(repo.get_price_history(item_id, since, now))
+    points = merge_sources(await repo.get_price_history(item_id, since, now))
     safe_name = "".join(
         c if c.isalnum() or c in " -_" else "_" for c in item["name"]
     ).strip().replace(" ", "_")

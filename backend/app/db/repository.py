@@ -19,7 +19,7 @@ class Repository:
         self.db = db
 
     # ------------------------------------------------------------------ items
-    def upsert_items(self, items: Iterable[dict[str, Any]]) -> int:
+    async def upsert_items(self, items: Iterable[dict[str, Any]]) -> int:
         now = _now()
         rows = [
             (
@@ -31,7 +31,9 @@ class Repository:
             for it in items
             if isinstance(it.get("id"), int) and it.get("name")
         ]
-        cur = self.db.conn.executemany(
+        if not self.db.conn:
+            return 0
+        cur = await self.db.conn.executemany(
             """INSERT INTO items (item_id, name, description, members, icon,
                                   category, buy_limit, value, highalch, lowalch,
                                   last_updated)
@@ -44,56 +46,62 @@ class Repository:
                  last_updated=excluded.last_updated""",
             rows,
         )
-        self.db.conn.commit()
+        await self.db.conn.commit()
         return cur.rowcount if cur.rowcount and cur.rowcount > 0 else len(rows)
 
-    def item_count(self) -> int:
-        return self.db.conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+    async def item_count(self) -> int:
+        if not self.db.conn: return 0
+        cur = await self.db.conn.execute("SELECT COUNT(*) FROM items")
+        row = await cur.fetchone()
+        return row[0] if row else 0
 
-    def get_item(self, item_id: int) -> dict | None:
-        row = self.db.conn.execute(
+    async def get_item(self, item_id: int) -> dict | None:
+        if not self.db.conn: return None
+        cur = await self.db.conn.execute(
             "SELECT * FROM items WHERE item_id=?", (item_id,)
-        ).fetchone()
+        )
+        row = await cur.fetchone()
         return dict(row) if row else None
 
-    def get_items(self, item_ids: Iterable[int]) -> dict[int, dict]:
+    async def get_items(self, item_ids: Iterable[int]) -> dict[int, dict]:
         ids = list(item_ids)
-        if not ids:
+        if not ids or not self.db.conn:
             return {}
         q = ",".join("?" * len(ids))
-        rows = self.db.conn.execute(
+        cur = await self.db.conn.execute(
             f"SELECT * FROM items WHERE item_id IN ({q})", ids
-        ).fetchall()
+        )
+        rows = await cur.fetchall()
         return {r["item_id"]: dict(r) for r in rows}
 
-    def search_items(self, pattern: str, limit: int = 25) -> list[dict]:
+    async def search_items(self, pattern: str, limit: int = 25) -> list[dict]:
         """LIKE search; fuzzy layer sits above in services.search."""
-        rows = self.db.conn.execute(
+        if not self.db.conn: return []
+        cur = await self.db.conn.execute(
             """SELECT * FROM items WHERE name LIKE ? COLLATE NOCASE
                ORDER BY CASE WHEN name LIKE ? COLLATE NOCASE THEN 0 ELSE 1 END,
                         LENGTH(name), name LIMIT ?""",
             (f"%{pattern}%", f"{pattern}%", limit),
-        ).fetchall()
+        )
+        rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
-    def all_item_names(self) -> list[tuple[int, str]]:
-        rows = self.db.conn.execute("SELECT item_id, name FROM items").fetchall()
+    async def all_item_names(self) -> list[tuple[int, str]]:
+        if not self.db.conn: return []
+        cur = await self.db.conn.execute("SELECT item_id, name FROM items")
+        rows = await cur.fetchall()
         return [(r["item_id"], r["name"]) for r in rows]
 
     # ---------------------------------------------------------------- prices
-    def insert_price_rows(self, rows: list[dict[str, Any]]) -> tuple[int, int]:
-        """Insert price rows, ignoring duplicates.
-
-        Returns (inserted, skipped). Rows must have keys:
-        item_id, timestamp, high_price, low_price, average_price, volume, source.
-        """
-        if not rows:
+    async def insert_price_rows(self, rows: list[dict[str, Any]]) -> tuple[int, int]:
+        if not rows or not self.db.conn:
             return 0, 0
         now = _now()
-        before = self.db.conn.execute(
-            "SELECT COUNT(*) FROM price_history"
-        ).fetchone()[0]
-        self.db.conn.executemany(
+        cur_before = await self.db.conn.execute("SELECT COUNT(*) FROM price_history")
+        row_before = await cur_before.fetchone()
+        before = row_before[0] if row_before else 0
+
+        await self.db.conn.executemany(
             """INSERT OR IGNORE INTO price_history
                (item_id, timestamp, high_price, low_price, average_price,
                 volume, source, created_at)
@@ -101,17 +109,20 @@ class Repository:
                        :average_price, :volume, :source, :created_at)""",
             [{**r, "created_at": now} for r in rows],
         )
-        self.db.conn.commit()
-        after = self.db.conn.execute(
-            "SELECT COUNT(*) FROM price_history"
-        ).fetchone()[0]
+        await self.db.conn.commit()
+        
+        cur_after = await self.db.conn.execute("SELECT COUNT(*) FROM price_history")
+        row_after = await cur_after.fetchone()
+        after = row_after[0] if row_after else 0
+        
         inserted = after - before
         return inserted, len(rows) - inserted
 
-    def get_price_history(
+    async def get_price_history(
         self, item_id: int, since: int, until: int | None = None,
         sources: list[str] | None = None,
     ) -> list[dict]:
+        if not self.db.conn: return []
         until = until or _now()
         sql = """SELECT timestamp, high_price, low_price, average_price,
                         volume, source
@@ -122,65 +133,77 @@ class Repository:
             sql += f" AND source IN ({','.join('?' * len(sources))})"
             args.extend(sources)
         sql += " ORDER BY timestamp"
-        return [dict(r) for r in self.db.conn.execute(sql, args).fetchall()]
+        cur = await self.db.conn.execute(sql, args)
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
 
-    def delete_older_than(self, cutoff: int) -> int:
-        cur = self.db.conn.execute(
+    async def delete_older_than(self, cutoff: int) -> int:
+        if not self.db.conn: return 0
+        cur = await self.db.conn.execute(
             "DELETE FROM price_history WHERE timestamp < ?", (cutoff,)
         )
-        self.db.conn.commit()
+        await self.db.conn.commit()
         return cur.rowcount
 
-    def price_history_count(self) -> int:
-        return self.db.conn.execute(
-            "SELECT COUNT(*) FROM price_history"
-        ).fetchone()[0]
+    async def price_history_count(self) -> int:
+        if not self.db.conn: return 0
+        cur = await self.db.conn.execute("SELECT COUNT(*) FROM price_history")
+        row = await cur.fetchone()
+        return row[0] if row else 0
 
-    def data_coverage_days(self) -> float:
-        row = self.db.conn.execute(
+    async def data_coverage_days(self) -> float:
+        if not self.db.conn: return 0.0
+        cur = await self.db.conn.execute(
             "SELECT MIN(timestamp), MAX(timestamp) FROM price_history"
-        ).fetchone()
+        )
+        row = await cur.fetchone()
         if not row or row[0] is None:
             return 0.0
         return round((row[1] - row[0]) / 86400, 1)
 
-    def earliest_timestamp(self, item_id: int) -> int | None:
-        row = self.db.conn.execute(
+    async def earliest_timestamp(self, item_id: int) -> int | None:
+        if not self.db.conn: return None
+        cur = await self.db.conn.execute(
             "SELECT MIN(timestamp) FROM price_history WHERE item_id=?",
             (item_id,),
-        ).fetchone()
-        return row[0]
+        )
+        row = await cur.fetchone()
+        return row[0] if row else None
 
     # -------- market-wide snapshot queries (Top Movers), based on 1h data ---
-    def avg_price_around(self, ts: int, window: int = 2 * 3600) -> dict[int, float]:
-        """Average price per item in [ts-window, ts+window] from hourly rows."""
-        rows = self.db.conn.execute(
+    async def avg_price_around(self, ts: int, window: int = 2 * 3600) -> dict[int, float]:
+        if not self.db.conn: return {}
+        cur = await self.db.conn.execute(
             """SELECT item_id, AVG(average_price) AS p
                FROM price_history
                WHERE source='1h' AND timestamp BETWEEN ? AND ?
                      AND average_price IS NOT NULL
                GROUP BY item_id""",
             (ts - window, ts + window),
-        ).fetchall()
+        )
+        rows = await cur.fetchall()
         return {r["item_id"]: r["p"] for r in rows}
 
-    def volume_since(self, since: int) -> dict[int, int]:
-        rows = self.db.conn.execute(
+    async def volume_since(self, since: int) -> dict[int, int]:
+        if not self.db.conn: return {}
+        cur = await self.db.conn.execute(
             """SELECT item_id, SUM(volume) AS v FROM price_history
                WHERE source='1h' AND timestamp>=? GROUP BY item_id""",
             (since,),
-        ).fetchall()
+        )
+        rows = await cur.fetchall()
         return {r["item_id"]: r["v"] or 0 for r in rows}
 
     # -------------------------------------------------------------- latest
-    def upsert_latest(self, data: dict[str, dict], fetched_at: int) -> None:
+    async def upsert_latest(self, data: dict[str, dict], fetched_at: int) -> None:
+        if not self.db.conn: return
         rows = [
             (int(iid), d.get("high"), d.get("highTime"),
              d.get("low"), d.get("lowTime"), fetched_at)
             for iid, d in data.items()
             if isinstance(d, dict)
         ]
-        self.db.conn.executemany(
+        await self.db.conn.executemany(
             """INSERT INTO latest_prices (item_id, high, high_time, low,
                                           low_time, fetched_at)
                VALUES (?,?,?,?,?,?)
@@ -190,130 +213,154 @@ class Repository:
                  fetched_at=excluded.fetched_at""",
             rows,
         )
-        self.db.conn.commit()
+        await self.db.conn.commit()
 
-    def get_latest(self, item_ids: Iterable[int]) -> dict[int, dict]:
+    async def get_latest(self, item_ids: Iterable[int]) -> dict[int, dict]:
         ids = list(item_ids)
-        if not ids:
+        if not ids or not self.db.conn:
             return {}
         q = ",".join("?" * len(ids))
-        rows = self.db.conn.execute(
+        cur = await self.db.conn.execute(
             f"SELECT * FROM latest_prices WHERE item_id IN ({q})", ids
-        ).fetchall()
+        )
+        rows = await cur.fetchall()
         return {r["item_id"]: dict(r) for r in rows}
 
     # ------------------------------------------------------------- tracked
-    def add_tracked(self, item_id: int) -> bool:
-        cur = self.db.conn.execute(
+    async def add_tracked(self, item_id: int) -> bool:
+        if not self.db.conn: return False
+        cur = await self.db.conn.execute(
             "INSERT OR IGNORE INTO tracked_items (item_id, added_at, group_name) VALUES (?,?, 'Default')",
             (item_id, _now()),
         )
-        self.db.conn.commit()
+        await self.db.conn.commit()
         return cur.rowcount > 0
 
-    def remove_tracked(self, item_id: int) -> bool:
-        cur = self.db.conn.execute(
+    async def remove_tracked(self, item_id: int) -> bool:
+        if not self.db.conn: return False
+        cur = await self.db.conn.execute(
             "DELETE FROM tracked_items WHERE item_id=?", (item_id,)
         )
-        self.db.conn.commit()
+        await self.db.conn.commit()
         return cur.rowcount > 0
 
-    def set_favorite(self, item_id: int, favorite: bool) -> None:
-        self.db.conn.execute(
+    async def set_favorite(self, item_id: int, favorite: bool) -> None:
+        if not self.db.conn: return
+        await self.db.conn.execute(
             "UPDATE tracked_items SET favorite=? WHERE item_id=?",
             (1 if favorite else 0, item_id),
         )
-        self.db.conn.commit()
+        await self.db.conn.commit()
 
-    def set_group(self, item_id: int, group_name: str) -> None:
-        self.db.conn.execute(
+    async def set_group(self, item_id: int, group_name: str) -> None:
+        if not self.db.conn: return
+        await self.db.conn.execute(
             "UPDATE tracked_items SET group_name=? WHERE item_id=?",
             (group_name or 'Default', item_id),
         )
-        self.db.conn.commit()
+        await self.db.conn.commit()
 
-    def set_backfilled(self, item_id: int) -> None:
-        self.db.conn.execute(
+    async def set_backfilled(self, item_id: int) -> None:
+        if not self.db.conn: return
+        await self.db.conn.execute(
             "UPDATE tracked_items SET backfilled=1 WHERE item_id=?", (item_id,)
         )
-        self.db.conn.commit()
+        await self.db.conn.commit()
 
-    def tracked(self) -> list[dict]:
-        rows = self.db.conn.execute(
+    async def tracked(self) -> list[dict]:
+        if not self.db.conn: return []
+        cur = await self.db.conn.execute(
             """SELECT t.*, i.name, i.icon, i.members, i.description
                FROM tracked_items t LEFT JOIN items i USING (item_id)
                ORDER BY t.group_name ASC, t.favorite DESC, i.name"""
-        ).fetchall()
+        )
+        rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
-    def tracked_ids(self) -> list[int]:
-        rows = self.db.conn.execute(
+    async def tracked_ids(self) -> list[int]:
+        if not self.db.conn: return []
+        cur = await self.db.conn.execute(
             "SELECT item_id FROM tracked_items"
-        ).fetchall()
+        )
+        rows = await cur.fetchall()
         return [r["item_id"] for r in rows]
 
-    def pending_backfill_ids(self) -> list[int]:
-        rows = self.db.conn.execute(
+    async def pending_backfill_ids(self) -> list[int]:
+        if not self.db.conn: return []
+        cur = await self.db.conn.execute(
             "SELECT item_id FROM tracked_items WHERE backfilled=0"
-        ).fetchall()
+        )
+        rows = await cur.fetchall()
         return [r["item_id"] for r in rows]
 
     # ------------------------------------------------------------ sync state
-    def get_state(self, key: str, default: str | None = None) -> str | None:
-        row = self.db.conn.execute(
+    async def get_state(self, key: str, default: str | None = None) -> str | None:
+        if not self.db.conn: return default
+        cur = await self.db.conn.execute(
             "SELECT value FROM sync_state WHERE key=?", (key,)
-        ).fetchone()
+        )
+        row = await cur.fetchone()
         return row["value"] if row else default
 
-    def set_state(self, key: str, value: str) -> None:
-        self.db.conn.execute(
+    async def set_state(self, key: str, value: str) -> None:
+        if not self.db.conn: return
+        await self.db.conn.execute(
             """INSERT INTO sync_state (key, value) VALUES (?,?)
                ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
             (key, value),
         )
-        self.db.conn.commit()
+        await self.db.conn.commit()
 
     # -------------------------------------------------------------- settings
-    def get_settings(self, defaults: dict[str, str]) -> dict[str, str]:
-        rows = self.db.conn.execute("SELECT key, value FROM settings").fetchall()
+    async def get_settings(self, defaults: dict[str, str]) -> dict[str, str]:
+        if not self.db.conn: return defaults
+        cur = await self.db.conn.execute("SELECT key, value FROM settings")
+        rows = await cur.fetchall()
         stored = {r["key"]: r["value"] for r in rows}
         return {**defaults, **stored}
 
-    def set_setting(self, key: str, value: str) -> None:
-        self.db.conn.execute(
+    async def set_setting(self, key: str, value: str) -> None:
+        if not self.db.conn: return
+        await self.db.conn.execute(
             """INSERT INTO settings (key, value) VALUES (?,?)
                ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
             (key, value),
         )
-        self.db.conn.commit()
+        await self.db.conn.commit()
 
     # -------------------------------------------------------- collection log
-    def start_run(self) -> int:
-        cur = self.db.conn.execute(
+    async def start_run(self) -> int:
+        if not self.db.conn: return 0
+        cur = await self.db.conn.execute(
             "INSERT INTO collection_runs (started_at) VALUES (?)", (_now(),)
         )
-        self.db.conn.commit()
+        await self.db.conn.commit()
         return cur.lastrowid
 
-    def finish_run(self, run_id: int, ok: bool, inserted: int, skipped: int,
+    async def finish_run(self, run_id: int, ok: bool, inserted: int, skipped: int,
                    deleted: int, api_requests: int, error: str | None) -> None:
-        self.db.conn.execute(
+        if not self.db.conn: return
+        await self.db.conn.execute(
             """UPDATE collection_runs
                SET finished_at=?, ok=?, inserted=?, skipped=?, deleted=?,
                    api_requests=?, error=? WHERE id=?""",
             (_now(), 1 if ok else 0, inserted, skipped, deleted,
              api_requests, error, run_id),
         )
-        self.db.conn.commit()
+        await self.db.conn.commit()
 
-    def last_run(self) -> dict | None:
-        row = self.db.conn.execute(
+    async def last_run(self) -> dict | None:
+        if not self.db.conn: return None
+        cur = await self.db.conn.execute(
             "SELECT * FROM collection_runs ORDER BY id DESC LIMIT 1"
-        ).fetchone()
+        )
+        row = await cur.fetchone()
         return dict(row) if row else None
 
-    def last_successful_run(self) -> dict | None:
-        row = self.db.conn.execute(
+    async def last_successful_run(self) -> dict | None:
+        if not self.db.conn: return None
+        cur = await self.db.conn.execute(
             "SELECT * FROM collection_runs WHERE ok=1 ORDER BY id DESC LIMIT 1"
-        ).fetchone()
+        )
+        row = await cur.fetchone()
         return dict(row) if row else None

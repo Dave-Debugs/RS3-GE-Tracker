@@ -11,10 +11,10 @@ router = APIRouter(prefix="/api/items", tags=["items"])
 
 
 @router.get("/search")
-def search(q: str = Query("", max_length=100), limit: int = Query(25, le=100),
+async def search(q: str = Query("", max_length=100), limit: int = Query(25, le=100),
            repo: Repository = Depends(get_repo)) -> dict:
-    items = search_items(repo, q, limit=limit)
-    latest = repo.get_latest([i["item_id"] for i in items])
+    items = await search_items(repo, q, limit=limit)
+    latest = await repo.get_latest([i["item_id"] for i in items])
     out = []
     for item in items:
         lp = latest.get(item["item_id"])
@@ -32,8 +32,8 @@ def search(q: str = Query("", max_length=100), limit: int = Query(25, le=100),
 
 
 @router.get("/{item_id}")
-def get_item(item_id: int, repo: Repository = Depends(get_repo)) -> dict:
-    item = repo.get_item(item_id)
+async def get_item(item_id: int, repo: Repository = Depends(get_repo)) -> dict:
+    item = await repo.get_item(item_id)
     if not item:
         raise HTTPException(404, f"Unknown item id {item_id}")
     return item_summary(item)

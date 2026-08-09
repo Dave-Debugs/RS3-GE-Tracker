@@ -1,7 +1,7 @@
 {
   "name": "rs3-ge-tracker-frontend",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.5.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.101.4",
     "echarts": "^5.5.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

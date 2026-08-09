@@ -188,12 +188,5 @@ def merge_sources(points: list[dict]) -> list[dict]:
 
 
 def downsample(points: list[dict], max_points: int = 1100) -> list[dict]:
-    """Thin a series for charting while keeping first/last points."""
-    n = len(points)
-    if n <= max_points:
-        return points
-    step = math.ceil(n / max_points)
-    thinned = points[::step]
-    if thinned[-1] is not points[-1]:
-        thinned.append(points[-1])
-    return thinned
+    """Return points directly. LTTB downsampling is handled by the frontend."""
+    return points

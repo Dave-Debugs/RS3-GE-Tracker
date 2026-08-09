@@ -28,9 +28,9 @@ _TRANSPARENT_PNG = bytes.fromhex(
 
 
 @router.get("/{item_id}")
-def icon(item_id: int, request: Request,
+async def icon(item_id: int, request: Request,
          repo: Repository = Depends(get_repo)) -> Response:
-    item = repo.get_item(item_id)
+    item = await repo.get_item(item_id)
     if not item:
         raise HTTPException(404, "unknown item")
     name = item.get("icon")
@@ -47,7 +47,7 @@ def icon(item_id: int, request: Request,
     url = "https://runescape.wiki/images/" + safe.replace(" ", "_")
     try:
         client = request.app.state.client
-        resp = httpx.get(url, headers={"User-Agent": client.user_agent},
+        resp = await client._client.get(url, headers={"User-Agent": client.user_agent},
                          timeout=15, follow_redirects=True)
         if resp.status_code == 200 and resp.content:
             cached.write_bytes(resp.content)

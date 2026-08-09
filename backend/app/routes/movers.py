@@ -17,7 +17,7 @@ MIN_VOLUME_24H = 2000    # require real liquidity so manipulation spikes
 
 
 @router.get("")
-def top_movers(
+async def top_movers(
     period: str = Query("24h"),
     limit: int = Query(10, le=50),
     repo: Repository = Depends(get_repo),
@@ -27,9 +27,9 @@ def top_movers(
     now = int(time.time())
     then = now - PERIODS[period]
 
-    current = repo.avg_price_around(now, window=3 * 3600)
-    past = repo.avg_price_around(then, window=6 * 3600)
-    volume = repo.volume_since(now - 86400)
+    current = await repo.avg_price_around(now, window=3 * 3600)
+    past = await repo.avg_price_around(then, window=6 * 3600)
+    volume = await repo.volume_since(now - 86400)
 
     changes = []
     for iid, price_now in current.items():
@@ -49,7 +49,7 @@ def top_movers(
     vol_sorted = sorted(volume.items(), key=lambda kv: kv[1], reverse=True)[:limit]
 
     ids = {c[0] for c in gainers + losers} | {iid for iid, _ in vol_sorted}
-    items = repo.get_items(ids)
+    items = await repo.get_items(ids)
 
     def fmt(iid: int, price_now: float, price_then: float, pct: float) -> dict:
         item = items.get(iid, {})

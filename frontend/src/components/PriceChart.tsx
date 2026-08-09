@@ -86,6 +86,7 @@ function buildOption(
       showSymbol: false,
       connectNulls: true,
       smooth: 0.15,
+      sampling: "lttb",
       lineStyle: { width: 2, color },
       itemStyle: { color },
       emphasis: { focus: "series" },

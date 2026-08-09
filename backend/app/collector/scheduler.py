@@ -25,29 +25,28 @@ class CollectorScheduler:
         self._wake = asyncio.Event()
         self.last_cycle_at: float | None = None
         self.running = False
+        self._interval_seconds = 300
 
-    @property
-    def interval_seconds(self) -> int:
-        settings = self.repo.get_settings(DEFAULT_SETTINGS)
+    async def update_interval(self) -> None:
+        settings = await self.repo.get_settings(DEFAULT_SETTINGS)
         try:
             minutes = int(settings["update_interval_minutes"])
         except (KeyError, ValueError):
             minutes = 5
-        return max(1, minutes) * 60
+        self._interval_seconds = max(1, minutes) * 60
 
     @property
     def next_run_at(self) -> float | None:
         if not self.running or self.last_cycle_at is None:
             return None
-        return self.last_cycle_at + self.interval_seconds
+        return self.last_cycle_at + self._interval_seconds
 
     def start(self) -> None:
         if self._task is None or self._task.done():
             self._stop.clear()
             self._task = asyncio.get_event_loop().create_task(self._loop())
             self.running = True
-            log.info("Collector scheduler started (interval %ds)",
-                     self.interval_seconds)
+            log.info("Collector scheduler started")
 
     async def stop(self) -> None:
         self.running = False
@@ -67,14 +66,15 @@ class CollectorScheduler:
         while not self._stop.is_set():
             self.last_cycle_at = time.time()
             try:
-                # run_cycle is blocking (sqlite + httpx sync) -> thread pool
-                await asyncio.to_thread(self.collector.run_cycle)
-            except Exception:  # pragma: no cover - collector already logs
+                await self.collector.run_cycle()
+            except Exception:
                 log.exception("Scheduler cycle crashed")
-            # Sleep until next interval, but wake early on trigger/stop.
+                
+            await self.update_interval()
+            
             try:
                 await asyncio.wait_for(self._wake.wait(),
-                                       timeout=self.interval_seconds)
+                                       timeout=self._interval_seconds)
             except asyncio.TimeoutError:
                 pass
             self._wake.clear()

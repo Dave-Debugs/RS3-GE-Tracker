@@ -26,14 +26,14 @@ class GroupRequest(BaseModel):
 
 
 @router.get("")
-def list_tracked(repo: Repository = Depends(get_repo)) -> dict:
+async def list_tracked(repo: Repository = Depends(get_repo)) -> dict:
     now = int(time.time())
-    tracked = repo.tracked()
-    latest = repo.get_latest([t["item_id"] for t in tracked])
+    tracked = await repo.tracked()
+    latest = await repo.get_latest([t["item_id"] for t in tracked])
     out = []
     for t in tracked:
         iid = t["item_id"]
-        points = merge_sources(repo.get_price_history(iid, now - 7 * 86400))
+        points = merge_sources(await repo.get_price_history(iid, now - 7 * 86400))
         lp = latest.get(iid)
         current = None
         updated = None
@@ -69,37 +69,37 @@ def list_tracked(repo: Repository = Depends(get_repo)) -> dict:
 
 
 @router.post("", status_code=201)
-def add_tracked(body: TrackRequest, repo: Repository = Depends(get_repo),
+async def add_tracked(body: TrackRequest, repo: Repository = Depends(get_repo),
                 scheduler=Depends(get_scheduler)) -> dict:
-    if not repo.get_item(body.item_id):
+    if not await repo.get_item(body.item_id):
         raise HTTPException(404, f"Unknown item id {body.item_id}")
-    added = repo.add_tracked(body.item_id)
+    added = await repo.add_tracked(body.item_id)
     if added and scheduler is not None:
         scheduler.trigger_now()  # kick off backfill promptly
     return {"item_id": body.item_id, "added": added}
 
 
 @router.delete("/{item_id}")
-def remove_tracked(item_id: int, repo: Repository = Depends(get_repo)) -> dict:
-    removed = repo.remove_tracked(item_id)
+async def remove_tracked(item_id: int, repo: Repository = Depends(get_repo)) -> dict:
+    removed = await repo.remove_tracked(item_id)
     if not removed:
         raise HTTPException(404, "Item is not tracked")
     return {"item_id": item_id, "removed": True}
 
 
 @router.put("/{item_id}/favorite")
-def set_favorite(item_id: int, body: FavoriteRequest,
+async def set_favorite(item_id: int, body: FavoriteRequest,
                  repo: Repository = Depends(get_repo)) -> dict:
-    if item_id not in repo.tracked_ids():
+    if item_id not in await repo.tracked_ids():
         raise HTTPException(404, "Item is not tracked")
-    repo.set_favorite(item_id, body.favorite)
+    await repo.set_favorite(item_id, body.favorite)
     return {"item_id": item_id, "favorite": body.favorite}
 
 
 @router.put("/{item_id}/group")
-def set_group(item_id: int, body: GroupRequest,
+async def set_group(item_id: int, body: GroupRequest,
               repo: Repository = Depends(get_repo)) -> dict:
-    if item_id not in repo.tracked_ids():
+    if item_id not in await repo.tracked_ids():
         raise HTTPException(404, "Item is not tracked")
-    repo.set_group(item_id, body.group.strip())
+    await repo.set_group(item_id, body.group.strip())
     return {"item_id": item_id, "group": body.group.strip()}

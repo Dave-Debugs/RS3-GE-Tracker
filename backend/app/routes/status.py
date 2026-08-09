@@ -11,10 +11,10 @@ router = APIRouter(prefix="/api/status", tags=["status"])
 
 
 @router.get("")
-def status(repo: Repository = Depends(get_repo),
+async def status(repo: Repository = Depends(get_repo),
            scheduler=Depends(get_scheduler)) -> dict:
-    last_run = repo.last_run()
-    last_ok = repo.last_successful_run()
+    last_run = await repo.last_run()
+    last_ok = await repo.last_successful_run()
     now = int(time.time())
     api_online = bool(
         last_run and last_run.get("ok")
@@ -28,10 +28,10 @@ def status(repo: Repository = Depends(get_repo),
         "next_update": int(scheduler.next_run_at) if scheduler and scheduler.next_run_at else None,
         "last_run_ok": bool(last_run and last_run.get("ok")),
         "last_run_error": last_run.get("error") if last_run else None,
-        "tracked_items": len(repo.tracked_ids()),
-        "database_records": repo.price_history_count(),
-        "data_coverage_days": repo.data_coverage_days(),
-        "item_count": repo.item_count(),
+        "tracked_items": len(await repo.tracked_ids()),
+        "database_records": await repo.price_history_count(),
+        "data_coverage_days": await repo.data_coverage_days(),
+        "item_count": await repo.item_count(),
         "server_time": now,
     }
 

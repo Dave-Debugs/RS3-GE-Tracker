@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
+import {
+  useStatus, useSettings, useTracked, usePrices, useStats, useTrend,
+  useTrackItem, useUntrackItem, useFavoriteItem, useSetGroup, useCollectNow
+} from "./hooks";
 import Header from "./components/Header";
 import PriceChart from "./components/PriceChart";
 import SearchBar from "./components/SearchBar";
@@ -7,178 +11,137 @@ import SettingsPanel from "./components/SettingsPanel";
 import StatsPanel from "./components/StatsPanel";
 import TopMovers from "./components/TopMovers";
 import TrackedList from "./components/TrackedList";
-import type {
-  ChartMode, ChartRange, ItemStats, PriceSeries, Settings, StatusInfo,
-  TrackedItem, TrendInfo,
-} from "./types";
+import type { ChartMode, ChartRange } from "./types";
 
 const RANGES: ChartRange[] = ["1h", "6h", "24h", "7d", "14d"];
 const MA_OPTIONS = ["1h", "6h", "24h", "7d"];
 
 export default function App() {
-  const [status, setStatus] = useState<StatusInfo | null>(null);
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [tracked, setTracked] = useState<TrackedItem[]>([]);
+  const { data: status, error: statusError } = useStatus();
+  const { data: settings } = useSettings();
+  const { data: trackedData = [] } = useTracked();
+  
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [focusedId, setFocusedId] = useState<number | null>(null);
   const [viewedUntracked, setViewedUntracked] = useState<{item_id: number, name: string} | null>(null);
+  
   const [range, setRange] = useState<ChartRange>("24h");
   const [mode, setMode] = useState<ChartMode>("price");
   const [maKeys, setMaKeys] = useState<string[]>([]);
   const [showVolume, setShowVolume] = useState(false);
   const [showHighLow, setShowHighLow] = useState(false);
-  const [series, setSeries] = useState<PriceSeries[]>([]);
-  const [stats, setStats] = useState<ItemStats | null>(null);
-  const [trend, setTrend] = useState<TrendInfo | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [banner, setBanner] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
 
-  const dark = (settings?.theme ?? "dark") === "dark";
-
-  // ---- initial load: settings + status + tracked
+  // Sync selected IDs logic from old App.tsx
   useEffect(() => {
-    api.settings().then((s) => {
-      setSettings(s);
-      if (RANGES.includes(s.default_chart_range as ChartRange)) {
-        setRange(s.default_chart_range as ChartRange);
-      }
-    }).catch(() => setBanner("Backend unreachable — is the server running?"));
-  }, []);
-
-  const loadStatus = useCallback(async () => {
-    try {
-      const s = await api.status();
-      setStatus(s);
-      setBanner(s.api_online ? null
-        : "API temporarily unavailable — displaying cached data.");
-    } catch {
-      setBanner("Backend unreachable — is the server running?");
-    }
-  }, []);
-
-  const loadTracked = useCallback(async () => {
-    try {
-      const { tracked } = await api.tracked();
-      setTracked(tracked);
-      setSelectedIds((prev) => {
-        const ids = new Set(tracked.map((t) => t.item_id));
-        const kept = new Set([...prev].filter((id) => ids.has(id)));
-        // newly tracked items go on the chart automatically
-        for (const t of tracked) if (!prev.size || !prev.has(t.item_id)) {
+    if (!trackedData.length) return;
+    setSelectedIds((prev) => {
+      const ids = new Set(trackedData.map((t) => t.item_id));
+      const kept = new Set([...prev].filter((id) => ids.has(id)));
+      for (const t of trackedData) {
+        if (!prev.size || !prev.has(t.item_id)) {
           if (!kept.size || !prev.has(t.item_id)) kept.add(t.item_id);
         }
-        return kept.size ? kept : ids;
-      });
-      setFocusedId((f) =>
-        f && tracked.some((t) => t.item_id === f) ? f : tracked[0]?.item_id ?? null);
-    } catch {
-      /* banner already handled by status */
-    }
-  }, []);
+      }
+      return kept.size ? kept : ids;
+    });
+    setFocusedId((f) =>
+      f && trackedData.some((t) => t.item_id === f) ? f : trackedData[0]?.item_id ?? null
+    );
+  }, [trackedData.length]); // Only run on length change to avoid loop
 
+  // Initialize range from settings
   useEffect(() => {
-    loadStatus();
-    loadTracked();
-    const id = window.setInterval(() => {
-      loadStatus();
-      loadTracked();
-      setRefreshKey((k) => k + 1);
-    }, 60_000);
-    return () => window.clearInterval(id);
-  }, [loadStatus, loadTracked]);
+    if (settings && RANGES.includes(settings.default_chart_range as ChartRange)) {
+      setRange(settings.default_chart_range as ChartRange);
+    }
+  }, [settings?.default_chart_range]);
 
+  const dark = (settings?.theme ?? "dark") === "dark";
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
 
-  // ---- chart data
-  const chartIds = useMemo(
-    () => {
-      if (viewedUntracked && focusedId === viewedUntracked.item_id) {
-        return [viewedUntracked.item_id];
-      }
-      return tracked.filter((t) => selectedIds.has(t.item_id)).map((t) => t.item_id);
-    },
-    [tracked, selectedIds, focusedId, viewedUntracked]
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!chartIds.length) { setSeries([]); return; }
-    const ma = chartIds.length === 1 ? maKeys : [];
-    Promise.all(chartIds.map((id) => api.prices(id, range, ma)))
-      .then((all) => { if (!cancelled) setSeries(all); })
-      .catch((e) => { if (!cancelled) setBanner(`Failed to load chart data: ${e}`); });
-    return () => { cancelled = true; };
-  }, [chartIds, range, maKeys, refreshKey]);
-
-  // ---- stats for focused item
-  useEffect(() => {
-    let cancelled = false;
-    if (!focusedId) { setStats(null); setTrend(null); return; }
-    Promise.all([api.stats(focusedId), api.trend(focusedId)])
-      .then(([s, t]) => { if (!cancelled) { setStats(s); setTrend(t); } })
-      .catch(() => { if (!cancelled) { setStats(null); setTrend(null); } });
-    return () => { cancelled = true; };
-  }, [focusedId, refreshKey]);
-
-  // ---- actions
-  const handleTrack = async (item: { item_id: number }) => {
-    try {
-      await api.track(item.item_id);
-      setSelectedIds((s) => new Set(s).add(item.item_id));
-      setFocusedId(item.item_id);
-      if (viewedUntracked?.item_id === item.item_id) setViewedUntracked(null);
-      await loadTracked();
-    } catch (e) {
-      setBanner(`Could not track item: ${e}`);
+  const chartIds = useMemo(() => {
+    if (viewedUntracked && focusedId === viewedUntracked.item_id) {
+      return [viewedUntracked.item_id];
     }
+    return trackedData.filter((t) => selectedIds.has(t.item_id)).map((t) => t.item_id);
+  }, [trackedData, selectedIds, focusedId, viewedUntracked]);
+
+  const { data: series = [], error: seriesError } = usePrices(chartIds, range, maKeys);
+  const { data: stats = null } = useStats(focusedId);
+  const { data: trend = null } = useTrend(focusedId);
+
+  const trackMutation = useTrackItem();
+  const untrackMutation = useUntrackItem();
+  const favoriteMutation = useFavoriteItem();
+  const setGroupMutation = useSetGroup();
+  const collectMutation = useCollectNow();
+
+  const handleTrack = async (item: { item_id: number }) => {
+    trackMutation.mutate(item.item_id, {
+      onSuccess: () => {
+        setSelectedIds((s) => new Set(s).add(item.item_id));
+        setFocusedId(item.item_id);
+        if (viewedUntracked?.item_id === item.item_id) setViewedUntracked(null);
+      }
+    });
   };
 
   const handleRemove = async (id: number) => {
-    await api.untrack(id).catch(() => undefined);
-    setSelectedIds((s) => { const n = new Set(s); n.delete(id); return n; });
-    await loadTracked();
+    untrackMutation.mutate(id, {
+      onSuccess: () => {
+        setSelectedIds((s) => { const n = new Set(s); n.delete(id); return n; });
+      }
+    });
   };
 
   const handleFavorite = async (id: number, fav: boolean) => {
-    await api.favorite(id, fav).catch(() => undefined);
-    await loadTracked();
+    favoriteMutation.mutate({ id, fav });
   };
 
   const handleSetGroup = async (id: number, group: string) => {
-    await api.setGroup(id, group).catch(() => undefined);
-    await loadTracked();
+    setGroupMutation.mutate({ id, group });
   };
 
-  const handleMoverSelect = async (itemId: number) => {
-    if (!tracked.some((t) => t.item_id === itemId)) await handleTrack({ item_id: itemId });
-    else { setFocusedId(itemId); setSelectedIds((s) => new Set(s).add(itemId)); }
+  const handleMoverSelect = async (itemId: number, name: string) => {
+    if (!trackedData.some((t) => t.item_id === itemId)) {
+      handleTrack({ item_id: itemId });
+    } else {
+      setFocusedId(itemId);
+      setSelectedIds((s) => new Set(s).add(itemId));
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleCollectNow = async () => {
-    await api.collectNow().catch(() => undefined);
-    setTimeout(() => { loadStatus(); loadTracked(); setRefreshKey((k) => k + 1); }, 4000);
+    collectMutation.mutate();
   };
 
   const focusedName =
-    tracked.find((t) => t.item_id === focusedId)?.name 
+    trackedData.find((t) => t.item_id === focusedId)?.name 
     ?? (focusedId === viewedUntracked?.item_id ? viewedUntracked.name : null);
+  
   const single = chartIds.length === 1;
+
+  let banner = null;
+  if (statusError) banner = "Backend unreachable — is the server running?";
+  else if (status && !status.api_online) banner = "API temporarily unavailable — displaying cached data.";
+  else if (seriesError) banner = `Failed to load chart data: ${seriesError.message}`;
+  else if (trackMutation.isError) banner = `Could not track item: ${trackMutation.error?.message}`;
 
   return (
     <div className="app">
       <Header
-        status={status}
+        status={status || null}
         onOpenSettings={() => setSettingsOpen(true)}
         onCollectNow={handleCollectNow}
       />
       {banner && <div className="banner">{banner}</div>}
 
       <SearchBar
-        trackedIds={new Set(tracked.map((t) => t.item_id))}
+        trackedIds={new Set(trackedData.map((t) => t.item_id))}
         onTrack={handleTrack}
         onSelect={(item) => {
           setViewedUntracked({ item_id: item.item_id, name: item.name });
@@ -250,7 +213,7 @@ export default function App() {
           </section>
 
           <TrackedList
-            items={tracked}
+            items={trackedData}
             selectedIds={selectedIds}
             focusedId={focusedId}
             onToggleChart={(id) =>
@@ -267,16 +230,16 @@ export default function App() {
         </div>
 
         <div className="side-col">
-          <StatsPanel name={focusedName} stats={stats} trend={trend} />
-          <TopMovers onSelect={handleMoverSelect} refreshKey={refreshKey} />
+          <StatsPanel name={focusedName || null} stats={stats} trend={trend} />
+          <TopMovers onSelect={handleMoverSelect} />
         </div>
       </div>
 
       <SettingsPanel
         open={settingsOpen}
-        status={status}
+        status={status || null}
         onClose={() => setSettingsOpen(false)}
-        onSaved={(s) => { setSettings(s); loadStatus(); }}
+        onSaved={() => {}}
       />
       <footer className="footer muted">
         Price data © RuneScape Wiki real-time prices · Made by <a href="https://github.com/Davedebugs" target="_blank" rel="noopener noreferrer" style={{color: "inherit", textDecoration: "underline"}}>Davedebugs</a> ·

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-import threading
+import aiosqlite
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -85,40 +85,38 @@ CREATE TABLE IF NOT EXISTS settings (
 
 
 class Database:
-    """Thread-safe SQLite wrapper (one connection per thread)."""
+    """Async SQLite wrapper using aiosqlite."""
 
     def __init__(self, path: str | Path):
         self.path = str(path)
-        self._local = threading.local()
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        self.init_schema()
+        self.conn: aiosqlite.Connection | None = None
 
-    @property
-    def conn(self) -> sqlite3.Connection:
-        conn = getattr(self._local, "conn", None)
-        if conn is None:
-            conn = sqlite3.connect(self.path, timeout=30)
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
-            conn.execute("PRAGMA foreign_keys=ON")
-            self._local.conn = conn
-        return conn
+    async def connect(self) -> None:
+        if self.conn is None:
+            self.conn = await aiosqlite.connect(self.path, timeout=30)
+            self.conn.row_factory = aiosqlite.Row
+            await self.conn.execute("PRAGMA journal_mode=WAL")
+            await self.conn.execute("PRAGMA synchronous=NORMAL")
+            await self.conn.execute("PRAGMA foreign_keys=ON")
+            await self.init_schema()
 
-    def init_schema(self) -> None:
-        self.conn.executescript(SCHEMA)
-        self.conn.commit()
+    async def init_schema(self) -> None:
+        if not self.conn:
+            return
+        await self.conn.executescript(SCHEMA)
+        await self.conn.commit()
         # Migration: Add group_name if missing
-        cursor = self.conn.execute("PRAGMA table_info(tracked_items)")
-        columns = [row["name"] for row in cursor.fetchall()]
+        cursor = await self.conn.execute("PRAGMA table_info(tracked_items)")
+        rows = await cursor.fetchall()
+        columns = [row["name"] for row in rows]
         if "group_name" not in columns:
-            self.conn.execute("ALTER TABLE tracked_items ADD COLUMN group_name TEXT DEFAULT 'Default'")
-            self.conn.commit()
+            await self.conn.execute("ALTER TABLE tracked_items ADD COLUMN group_name TEXT DEFAULT 'Default'")
+            await self.conn.commit()
         log.debug("Database schema ensured at %s", self.path)
 
-    def close(self) -> None:
-        conn = getattr(self._local, "conn", None)
-        if conn is not None:
-            conn.close()
-            self._local.conn = None
+    async def close(self) -> None:
+        if self.conn is not None:
+            await self.conn.close()
+            self.conn = None
