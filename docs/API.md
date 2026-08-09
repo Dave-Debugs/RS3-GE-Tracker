@@ -72,7 +72,7 @@ Same shape as `/5m` but hourly buckets (~2,800 items per bucket, aligned to
 
 ### 5. `GET /timeseries?id={itemId}&lookback={window}`
 Price history for one item. **`lookback` (not `timestep`) is the parameter in
-v2** — valid values: `6h`, `24h`, `7d`, `30d`, `6m`, `1y`.
+v2** — valid values: `6h`, `24h`, `7d`, `14d`, `6m`, `1y`.
 
 ```json
 {"data": [{"timestamp": 1786164900, "avgHighPrice": 76235.5,
@@ -86,7 +86,7 @@ Measured bucket resolution per lookback (verified empirically):
 | `6h`     | 5 min       |
 | `24h`    | 5 min       |
 | `7d`     | 1 hour      |
-| `30d`    | 6 hours     |
+| `14d`    | 6 hours     |
 
 Buckets with zero trades are simply absent (sparse series).
 
@@ -110,10 +110,10 @@ Buckets with zero trades are simply absent (sparse series).
 ## Historical data availability
 
 - `timeseries` provides up to 1 year lookback, but at coarse resolution for
-  long windows. For a rolling 30-day chart the best obtainable seed is:
-  30d @ 6 h buckets + last 7d @ 1 h + last 24h @ 5 min.
+  long windows. For a rolling 14-day chart the best obtainable seed is:
+  14d @ 6 h buckets + last 7d @ 1 h + last 24h @ 5 min.
 - **Limitation discovered:** the v2 RS3 service is comparatively new; some
-  items' 30d lookback currently returns less than a full 30 days of history
+  items' 14d lookback currently returns less than a full 14 days of history
   (~16 days observed for some items on 2026-08-09). The app therefore builds
   its own local history forward in time and back-fills whatever the API has.
 - Full historical dumps are not offered by this service; the wiki's separate

@@ -22,17 +22,17 @@ def test_pct_change():
 
 
 def test_compute_stats_basic():
-    # 30 days of daily points rising 100 -> 129
+    # 14 days of daily points rising 100 -> 129
     points = make_points(NOW - 30 * 86400 + 3600, 86400, list(range(100, 130)))
     stats = compute_stats(points, NOW)
     assert stats["current_price"] == 129
-    assert stats["high_30d"] == 129 and stats["low_30d"] == 100
-    assert stats["average_30d"] == 114.5
-    assert stats["median_30d"] == 114.5
+    assert stats["high_7d"] == 129 and stats["low_7d"] == 100
+    assert stats["average_7d"] == 114.5
+    assert stats["median_7d"] == 114.5
     assert stats["change_24h"] is not None and stats["change_24h"] > 0
     assert stats["change_7d"] is not None
     assert stats["total_volume"] == 300
-    assert stats["volatility_30d"] > 0
+    assert stats["volatility_7d"] > 0
 
 
 def test_compute_stats_empty():

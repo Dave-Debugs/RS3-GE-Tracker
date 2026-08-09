@@ -5,9 +5,9 @@ Each cycle:
   2. Fetch /latest for live card prices (single bulk request).
   3. Incrementally fetch missed /5m buckets (rows kept for tracked items).
   4. Incrementally fetch missed /1h buckets (rows kept for ALL items —
-     powers Top Movers and 30-day stats).
+     powers Top Movers and 14-day stats).
   5. Backfill newly tracked items via /timeseries (30d + 7d + 24h).
-  6. Enforce rolling retention (default 30 days).
+  6. Enforce rolling retention (default 14 days).
   7. Record run statistics and update sync state.
 
 Incremental sync: sync_state stores the last ingested bucket timestamp per

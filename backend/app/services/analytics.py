@@ -42,7 +42,7 @@ def price_at_or_before(points: list[dict], ts: int) -> float | None:
 
 
 def compute_stats(points: list[dict], now: int) -> dict:
-    """Stats over a (≤30-day) window of price rows sorted by timestamp."""
+    """Stats over a (≤14-day) window of price rows sorted by timestamp."""
     prices = [p["average_price"] for p in points if p.get("average_price") is not None]
     if not prices:
         return {

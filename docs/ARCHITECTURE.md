@@ -8,7 +8,7 @@ source, see [API.md](API.md); for the local backend's endpoints, see
 
 ## Context and goals
 
-The app exists to keep a reliable rolling 30-day local history of RuneScape 3
+The app exists to keep a reliable rolling 14-day local history of RuneScape 3
 Grand Exchange prices and make it explorable through interactive charts. The
 upstream service only offers coarse resolution for long lookbacks and (at the
 time of writing) limited RS3 history, so the core job of this system is to
@@ -39,7 +39,7 @@ usage must stay bounded; and the codebase must accept the planned v2 features
 │                                          │                             │
 │   app/collector/collector.py  Collector.run_cycle() — mapping refresh, │
 │   app/collector/scheduler.py  latest, incremental 5m/1h sync, item     │
-│        (async task in the     backfill, 30-day retention, run stats    │
+│        (async task in the     backfill, 14-day retention, run stats    │
 │         FastAPI lifespan)                │                             │
 │                                          ▼                             │
 │   app/db/database.py          SQLite, WAL mode, schema DDL             │
@@ -88,13 +88,13 @@ construction, so re-fetching a bucket is always safe.
 ## Key decisions and trade-offs
 
 **Storage budget: two tiers of resolution.** Storing 5-minute data for all
-~7,300 items would be ~60M rows per 30 days — far too much for the value.
+~7,300 items would be ~60M rows per 14 days — far too much for the value.
 Instead, 5-minute rows are kept only for *tracked* items, while hourly rows
-are kept for *every* item (~2M rows/30 days worst case). The hourly tier is
+are kept for *every* item (~2M rows/14 days worst case). The hourly tier is
 what makes market-wide features (Top Movers) possible; the 5-minute tier is
 what makes tracked-item charts detailed. Trade-off: an item only gains
 fine-grained history after you track it — mitigated by the timeseries
-backfill, which immediately seeds 30d/7d/24h at the best resolution the API
+backfill, which immediately seeds 14d/7d/24h at the best resolution the API
 offers.
 
 **Incremental sync via bucket timestamps, not row diffing.** The API's `/5m`
@@ -144,11 +144,11 @@ deliberately simple and labeled descriptive; ML experiments are a v2 item.
 1. Refresh `/mapping` if older than 24h.
 2. One bulk `/latest` request → overwrite `latest_prices`.
 3. Backfill any tracked item with `backfilled=0` from `/timeseries`
-   (30d→`ts6h`, 7d→`1h`, 24h→`5m`), then set the flag.
+   (14d→`ts6h`, 7d→`1h`, 24h→`5m`), then set the flag.
 4. Fetch missed 5-minute buckets (capped), keep rows for tracked items only.
 5. Fetch missed hourly buckets (capped; first run ever seeds 24 buckets so
    Top Movers works on day one), keep rows for all items.
-6. Delete `price_history` rows older than 30 days.
+6. Delete `price_history` rows older than 14 days.
 7. Write a `collection_runs` row and update `sync_state`.
 
 Failures at any step are caught, logged, recorded on the run row, and the

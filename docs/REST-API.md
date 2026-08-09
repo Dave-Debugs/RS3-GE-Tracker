@@ -27,7 +27,7 @@ like FastAPI's standard error body:
 | 422 | invalid parameter (bad range, period, interval, format…) |
 | 500 | unexpected server error (check `logs/rs3_tracker.log`) |
 
-`range` parameters accept exactly `24h`, `7d`, `14d`, `30d`.
+`range` parameters accept exactly `24h`, `7d`, `14d`, `14d`.
 
 ---
 
@@ -139,7 +139,7 @@ The watchlist with per-item live stats, sorted favorites-first then by name.
       "current_price": 71978,
       "change_24h": -5.58,
       "change_7d": -3.73,
-      "change_30d": -7.72,
+      "change_7d": -7.72,
       "trend": "Neutral",
       "volume_24h": 1337,
       "last_updated": 1786251005,
@@ -225,7 +225,7 @@ unknown `ma` key.
 
 ### `GET /api/stats/{item_id}`
 
-Descriptive statistics over the item's recorded 30-day window.
+Descriptive statistics over the item's recorded 14-day window.
 
 ```json
 {
@@ -233,18 +233,18 @@ Descriptive statistics over the item's recorded 30-day window.
   "current_price": 70352.0,
   "change_24h": -7.72,
   "change_7d": -5.9,
-  "change_30d": -9.8,
-  "high_30d": 95000.0,
-  "low_30d": 37353.18,
-  "average_30d": 77212.88,
-  "median_30d": 77133.96,
-  "volatility_30d": 8.207,
+  "change_7d": -9.8,
+  "high_7d": 95000.0,
+  "low_7d": 37353.18,
+  "average_7d": 77212.88,
+  "median_7d": 77133.96,
+  "volatility_7d": 8.207,
   "total_volume": 15980,
   "points": 368
 }
 ```
 
-`volatility_30d` is the standard deviation of point-to-point returns, in
+`volatility_7d` is the standard deviation of point-to-point returns, in
 percent. All price fields are `null` and `points` is `0` for an item with no
 recorded history yet.
 
@@ -275,7 +275,7 @@ descriptive, not predictive).
 
 ## Top Movers
 
-### `GET /api/movers?period={24h|7d|30d}&limit={n}`
+### `GET /api/movers?period={24h|7d|14d}&limit={n}`
 
 Market-wide gainers, losers, and highest 24h volume, computed from hourly
 whole-market data. Items are filtered for liquidity (price ≥ 100 gp at both
@@ -319,7 +319,7 @@ manipulation spikes don't dominate. `limit` defaults 10, max 50.
 }
 ```
 
-`7d`/`30d` periods need the app to have been collecting hourly data that far
+`7d`/`14d` periods need the app to have been collecting hourly data that far
 back; until then their lists are short or empty (24h works from first run).
 
 ---
@@ -332,7 +332,7 @@ back; until then their lists are short or empty (24h works from first run).
 {
   "update_interval_minutes": "5",
   "theme": "dark",
-  "default_chart_range": "30d",
+  "default_chart_range": "14d",
   "user_agent": "RS3-GE-Tracker/1.0 (personal price tracking app; ...)",
   "collector_autostart": "true",
   "database_path": ".../database/rs3_tracker.db"
@@ -347,7 +347,7 @@ the `RS3_DB_PATH` environment variable before startup).
 Partial update — send only the keys you're changing; returns the full merged
 settings. Validation per key: `update_interval_minutes` ∈
 `5|10|15|30|60`, `theme` ∈ `dark|light`, `default_chart_range` ∈
-`24h|7d|14d|30d`, `collector_autostart` ∈ `true|false`, `user_agent` length
+`24h|7d|14d|14d`, `collector_autostart` ∈ `true|false`, `user_agent` length
 10–300. Invalid values → `422`; an empty body → `422`. A changed interval
 takes effect from the next cycle; `collector_autostart` takes effect at next
 startup.

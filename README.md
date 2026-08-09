@@ -2,7 +2,7 @@
 
 A local, self-hosted market analytics app for **RuneScape 3** Grand Exchange
 prices. It automatically collects price data from the RuneScape Wiki's
-real-time prices API, keeps a rolling **30-day** history in SQLite, and gives
+real-time prices API, keeps a rolling **14-day** history in SQLite, and gives
 you an interactive dark-themed dashboard with multi-item comparison charts,
 statistics, trend classification, and Top Movers.
 
@@ -17,26 +17,26 @@ statistics, trend classification, and Top Movers.
 - **Automatic collection** — a background collector polls the RS3 price API on
   a configurable interval (5/10/15/30/60 min) with throttling, retries,
   exponential backoff, caching, and duplicate prevention.
-- **Rolling 30-day history** — new data in, data older than 30 days out, on
+- **Rolling 14-day history** — new data in, data older than 14 days out, on
   every cycle. The database never grows unbounded.
 - **Incremental sync** — only *missing* 5-minute / hourly buckets are fetched
   (the API's `?timestamp=` parameters), never the whole history again. Newly
-  tracked items are seeded from the API's own timeseries (30d/7d/24h).
+  tracked items are seeded from the API's own timeseries (14d/7d/24h).
 - **Item search** — partial, exact, item-ID, and fuzzy (typo-tolerant) search
   across all ~7,300 tradeable RS3 items.
-- **Tracked items** — watchlist with live price, 24H/7D/30D change, trend
+- **Tracked items** — watchlist with live price, 24H/7D/14D change, trend
   badge, 24H volume, favorites, and per-row chart toggles.
 - **Interactive chart** — zoom, pan, hover tooltips with exact timestamp/GP,
-  ranges 24H/7D/14D/30D, optional volume bars, instant buy/sell bands, and
+  ranges 24H/7D/14D/14D, optional volume bars, instant buy/sell bands, and
   1h/6h/24h/7d moving averages.
 - **Two comparison modes** — *Actual Price* (GP) and *% Change* (all items
   normalized to 0% at the window start, so an 800 gp Cannonball and a 120M gp
   Bond can be compared on one chart).
-- **Statistics & trends** — 30D high/low/average/median/volatility, volume,
+- **Statistics & trends** — 14D high/low/average/median/volatility, volume,
   and a descriptive trend classification (Strongly Rising → Strongly Falling)
   built from linear regression + moving-average crossover, with the underlying
   numbers shown. It describes history; it does not predict the future.
-- **Top Movers** — market-wide biggest gainers/losers (24H/7D/30D) and highest
+- **Top Movers** — market-wide biggest gainers/losers (24H/7D/14D) and highest
   volume, from hourly whole-market data; click any item to chart it.
 - **Export** — CSV (Excel/Sheets/pandas-friendly) and JSON per item.
 - **Graceful degradation** — if the API is down you see
@@ -110,7 +110,7 @@ docker compose up
 1. On startup the collector downloads the item catalogue (~7,300 items) and
    seeds the last 24 h of market-wide hourly data (~25 API requests, once).
 2. Search an item → **+ Track**. Tracking triggers an immediate backfill of
-   that item's history from the API's timeseries (up to 30 days at the best
+   that item's history from the API's timeseries (up to 14 days at the best
    available resolution).
 3. From then on everything updates automatically at your chosen interval.
 
@@ -120,7 +120,7 @@ Every cycle it: refreshes the item mapping (≤1×/day) → fetches `/latest`
 (bulk, one request) → fetches only the **missed** 5-minute buckets (stored for
 tracked items) → fetches only the missed hourly buckets (stored for **all**
 items — powers Top Movers) → backfills any newly tracked items via
-`/timeseries` → deletes rows older than 30 days → records run statistics.
+`/timeseries` → deletes rows older than 14 days → records run statistics.
 Catch-up after downtime is capped per cycle so it can never hammer the API;
 older gaps for tracked items heal via timeseries backfill.
 
@@ -135,7 +135,7 @@ SQLite file at **`database/rs3_tracker.db`** (created automatically; override
 with the `RS3_DB_PATH` env var). Tables: `items`, `price_history` (PK
 `item_id+timestamp+source` prevents duplicates; indexed on `item_id`,
 `timestamp`, and both), `latest_prices`, `tracked_items`, `sync_state`,
-`collection_runs`, `settings`. Retention is 30 days (internally configurable
+`collection_runs`, `settings`. Retention is 14 days (internally configurable
 via `RS3_RETENTION_DAYS`; the UI is designed around 30).
 
 ## API configuration
@@ -155,7 +155,7 @@ python -m pytest tests -v
 ```
 
 53 tests cover the API client (mocked transport — no live API needed),
-database (insert/dedupe/retention/30-day filtering), collector (initial +
+database (insert/dedupe/retention/14-day filtering), collector (initial +
 incremental sync, catch-up caps, backfill, failure recovery), analytics
 (price changes, stats, regression, trend classes, moving averages), search
 (partial/exact/ID/fuzzy), and every REST route including export and error
@@ -183,7 +183,7 @@ shortcut to `scripts\start_backend.bat` in `shell:startup`.
 - **No chart after tracking an item** — backfill happens on the next
   collector kick (triggered automatically within seconds). Low-volume items
   (e.g. party hats) genuinely have very few data points.
-- **Top Movers looks thin for 7D/30D** — market-wide history accumulates
+- **Top Movers looks thin for 7D/14D** — market-wide history accumulates
   from the moment you first run the app (the API's timeseries endpoint is
   per-item, so whole-market history can't be backfilled in bulk politely).
   24H movers work from day one.
@@ -196,11 +196,11 @@ shortcut to `scripts\start_backend.bat` in `shell:startup`.
 ## Known limitations (v1)
 
 - The RS3 real-time price service is newer than the OSRS one; at the time of
-  writing its `30d` timeseries returned ~16 days of history for many items, so
-  a brand-new install may show less than a full 30 days until the app has run
+  writing its `14d` timeseries returned ~16 days of history for many items, so
+  a brand-new install may show less than a full 14 days until the app has run
   long enough to build its own.
 - Prices are 5-minute/hourly *averages* of instant-buy/sell trades (that's
   what the API provides), not the exact guide price shown in-game.
-- Top Movers 7D/30D need the app to have been collecting for that long.
+- Top Movers 7D/14D need the app to have been collecting for that long.
 - One collector at a time: run either the backend (which embeds it) or
   `run_collector.py`, not both simultaneously.

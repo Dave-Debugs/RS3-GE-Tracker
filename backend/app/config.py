@@ -42,8 +42,8 @@ MAX_CATCHUP_1H_BUCKETS = 6
 MAPPING_REFRESH_SECONDS = 24 * 3600
 
 # --- Retention -------------------------------------------------------------
-# The UI is built around 30 days; retention is configurable internally.
-RETENTION_DAYS = int(os.environ.get("RS3_RETENTION_DAYS", "30"))
+# The UI is built around 14 days; retention is configurable internally.
+RETENTION_DAYS = int(os.environ.get("RS3_RETENTION_DAYS", "14"))
 
 # --- User-tunable defaults (persisted in DB `settings` table) --------------
 DEFAULT_SETTINGS: dict[str, str] = {

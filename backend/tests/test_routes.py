@@ -102,8 +102,8 @@ def test_stats_and_trends_routes(api):
     r = api.get("/api/stats/4151")
     assert r.status_code == 200
     body = r.json()
-    for key in ("current_price", "change_24h", "high_30d", "low_30d",
-                "average_30d", "median_30d", "volatility_30d", "total_volume"):
+    for key in ("current_price", "change_24h", "high_7d", "low_7d",
+                "average_7d", "median_7d", "volatility_7d", "total_volume"):
         assert key in body
     r = api.get("/api/trends/4151")
     assert r.json()["classification"] in {
