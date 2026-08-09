@@ -1,0 +1,28 @@
+# Optional: run the whole stack in containers.
+# On Windows you can simply use the scripts/ .bat files instead.
+services:
+  backend:
+    image: python:3.11-slim
+    working_dir: /app/backend
+    volumes:
+      - ./:/app
+    command: >
+      sh -c "pip install -r requirements.txt &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    environment:
+      - RS3_DB_DIR=/app/database
+    restart: unless-stopped
+
+  frontend:
+    image: node:20-slim
+    working_dir: /app/frontend
+    volumes:
+      - ./:/app
+    command: sh -c "npm install && npx vite --host 0.0.0.0 --port 5173"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped

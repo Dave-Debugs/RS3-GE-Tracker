@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Data & logs (local state — never commit)
+database/*.db
+database/*.db-wal
+database/*.db-shm
+database/icon_cache/
+logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+backend/dist_obf/
+backend/build/
+backend/dist/
+*.log
