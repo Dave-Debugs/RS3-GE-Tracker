@@ -13,7 +13,7 @@ copy run_app.py dist_obf\
 
 echo Packaging executable...
 cd dist_obf
-python -m PyInstaller --name RS3Tracker ^
+python -m PyInstaller --name RS3-GE-Tracker ^
   --icon="..\..\icon.ico" ^
   --add-data "..\..\icon.ico;." ^
   --add-data "..\..\frontend\dist;frontend\dist" ^
@@ -36,4 +36,4 @@ python -m PyInstaller --name RS3Tracker ^
   --noconsole ^
   --onefile run_app.py
 
-echo Done! Executable is in backend\dist_obf\dist\RS3Tracker.exe
+echo Done! Executable is in backend\dist_obf\dist\RS3-GE-Tracker.exe

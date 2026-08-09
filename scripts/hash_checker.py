@@ -23,7 +23,7 @@ def compute_sha256(file_path):
 def main():
     parser = argparse.ArgumentParser(description="Check the SHA-256 hash of a file (like RS3Tracker.exe) to verify its integrity.")
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    default_exe = os.path.join(script_dir, "..", "backend", "dist", "RS3Tracker.exe")
+    default_exe = os.path.join(script_dir, "..", "backend", "dist_obf", "dist", "RS3-GE-Tracker.exe")
     parser.add_argument("file", nargs="?", default=default_exe, help="Path to the file to check")
     parser.add_argument("--expected", "-e", help="Expected SHA-256 hash for verification")
     parser.add_argument("--save", "-s", action="store_true", help="Save the computed hash to a .sha256 file next to the original file")
