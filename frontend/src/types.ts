@@ -19,6 +19,9 @@ export interface TrackedItem {
   current_price: number | null;
   buy_price: number | null;
   sell_price: number | null;
+  margin: number | null;
+  tax: number | null;
+  net_profit: number | null;
   change_24h: number | null;
   change_7d: number | null;
   trend: string;
@@ -101,14 +104,89 @@ export interface StatusInfo {
   server_time: number;
 }
 
+export interface SettingsPayload {
+  update_interval_minutes: "5" | "10" | "15" | "30" | "60";
+  theme: "dark" | "light";
+  default_chart_range: ChartRange;
+  user_agent: string;
+  collector_autostart: "true" | "false";
+}
+
+export interface PortfolioItem {
+  id: number;
+  item_id: number;
+  name: string;
+  icon: string | null;
+  quantity: number;
+  buy_price_per_item: number;
+  current_price: number | null;
+}
+
+export interface PortfolioStats {
+  items: PortfolioItem[];
+  total_cost: number;
+  current_value: number;
+  unrealized_profit: number;
+}
+
+export interface RecipeIngredient {
+  item_id: number;
+  name: string;
+  icon: string | null;
+  icon_url?: string | null;
+  description?: string | null;
+  members?: boolean;
+  buy_limit?: number | null;
+  highalch?: number | null;
+  input_buy_price: number | null;
+  input_sell_price?: number | null;
+  wiki_url?: string;
+  qty: number;
+}
+
+export interface Recipe {
+  id: number;
+  name: string;
+  output_item_id: number;
+  output_name: string;
+  output_icon: string | null;
+  output_description?: string | null;
+  output_members?: boolean;
+  output_buy_limit?: number | null;
+  output_highalch?: number | null;
+  output_qty: number;
+  output_sell_price: number | null;
+  output_buy_price?: number | null;
+  wiki_url?: string;
+  cost: number;
+  revenue: number;
+  profit: number;
+  ingredients: RecipeIngredient[];
+}
+
+export interface Alert {
+  id: number;
+  item_id: number;
+  name?: string;
+  icon_url?: string | null;
+  condition: string;
+  threshold_price: number;
+  active: boolean;
+  last_triggered: number | null;
+  current_price?: number | null;
+  latest_high?: number | null;
+  latest_low?: number | null;
+}
+
 export interface Settings {
   update_interval_minutes: string;
   theme: string;
   default_chart_range: string;
+  show_item_tooltips?: string;
   user_agent: string;
   collector_autostart: string;
   database_path: string;
 }
 
-export type ChartRange = "1h" | "6h" | "24h" | "7d" | "14d";
+export type ChartRange = "1h" | "6h" | "24h" | "7d" | "14d" | "30d";
 export type ChartMode = "price" | "percent";

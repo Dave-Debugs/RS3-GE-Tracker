@@ -14,13 +14,28 @@ database/*.db
 database/*.db-wal
 database/*.db-shm
 database/icon_cache/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
 logs/
+charts/
+trending_results*.json
 
 # OS / editor
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+.agents/
+.claude/
+skills/
+
+# Design scratch
+frontend/design-preview.html
+frontend/design-tokens.json
+frontend/DESIGN.md
+frontend/tsconfig.tsbuildinfo
 
 backend/dist_obf/
 backend/build/

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import { ChartRange, Settings } from "./types";
+import { ChartRange, Settings, PortfolioStats, Recipe, Alert } from "./types";
 
 export function useStatus() {
   return useQuery({
@@ -68,7 +68,20 @@ export function useMovers(period: string) {
   });
 }
 
-// Mutations
+export function useCollectNow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/collector/run", { method: "POST" });
+      if (!res.ok) throw new Error("Failed to trigger collection");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tracked"] });
+      qc.invalidateQueries({ queryKey: ["status"] });
+    },
+  });
+}
+
 export function useTrackItem() {
   const qc = useQueryClient();
   return useMutation({
@@ -96,28 +109,162 @@ export function useFavoriteItem() {
 export function useSetGroup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, group }: { id: number; group: string }) => api.setGroup(id, group),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tracked"] }),
-  });
-}
-
-export function useUpdateSettings() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: api.updateSettings,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
-  });
-}
-
-export function useCollectNow() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: api.collectNow,
-    onSuccess: () => {
-      setTimeout(() => {
-        qc.invalidateQueries({ queryKey: ["status"] });
-        qc.invalidateQueries({ queryKey: ["tracked"] });
-      }, 4000);
+    mutationFn: async ({ id, group }: { id: number; group: string }) => {
+      const res = await fetch(`/api/tracked/${id}/group`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group }),
+      });
+      if (!res.ok) throw new Error("Failed to set group");
     },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tracked"] });
+    },
+  });
+}
+
+export function useDeleteGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (group: string) => {
+      const res = await fetch(`/api/tracked/groups/${encodeURIComponent(group)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete group");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tracked"] });
+    },
+  });
+}
+
+export function usePortfolio() {
+  return useQuery({
+    queryKey: ["portfolio"],
+    queryFn: async () => {
+      const res = await fetch("/api/portfolio");
+      if (!res.ok) throw new Error("Failed to fetch portfolio");
+      return res.json() as Promise<PortfolioStats>;
+    },
+    refetchInterval: 60000,
+  });
+}
+
+export function useAddPortfolioItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { item_id: number; quantity: number; buy_price_per_item: number }) => {
+      const res = await fetch("/api/portfolio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to add portfolio item");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }),
+  });
+}
+
+export function useDeletePortfolioItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/portfolio/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete portfolio item");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }),
+  });
+}
+
+export function useRecipes() {
+  return useQuery({
+    queryKey: ["recipes"],
+    queryFn: async () => {
+      const res = await fetch("/api/recipes");
+      if (!res.ok) throw new Error("Failed to fetch recipes");
+      const data = await res.json();
+      return data.recipes as Recipe[];
+    },
+    refetchInterval: 60000,
+  });
+}
+
+export function useCreateRecipe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: any) => {
+      const res = await fetch("/api/recipes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to create recipe");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["recipes"] }),
+  });
+}
+
+export function useDeleteRecipe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/recipes/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete recipe");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["recipes"] }),
+  });
+}
+
+export function useAlerts() {
+  return useQuery({
+    queryKey: ["alerts"],
+    queryFn: async () => {
+      const res = await fetch("/api/alerts");
+      if (!res.ok) throw new Error("Failed to fetch alerts");
+      const data = await res.json();
+      return data.alerts as Alert[];
+    },
+    refetchInterval: 30000,
+  });
+}
+
+export function useCreateAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { item_id: number; condition: string; threshold_price: number }) => {
+      const res = await fetch("/api/alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to create alert");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alerts"] }),
+  });
+}
+
+export function useUpdateAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, active }: { id: number; active: boolean }) => {
+      const res = await fetch(`/api/alerts/${id}/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active }),
+      });
+      if (!res.ok) throw new Error("Failed to update alert");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alerts"] }),
+  });
+}
+
+export function useDeleteAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/alerts/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete alert");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alerts"] }),
   });
 }

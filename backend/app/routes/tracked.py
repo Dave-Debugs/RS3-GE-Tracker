@@ -22,7 +22,8 @@ class FavoriteRequest(BaseModel):
 
 
 class GroupRequest(BaseModel):
-    group: str
+    group: str | None = None
+    group_name: str | None = None
 
 
 @router.get("")
@@ -48,6 +49,19 @@ async def list_tracked(repo: Repository = Depends(get_repo)) -> dict:
         vol_24h = sum(
             p.get("volume") or 0 for p in points if p["timestamp"] >= now - 86400
         )
+        buy_price = lp.get("high") if lp else None
+        sell_price = lp.get("low") if lp else None
+        
+        margin = None
+        tax = None
+        net_profit = None
+        if buy_price and sell_price:
+            # high = instant buy (lowest ask), low = instant sell (highest bid)
+            # Flipper buys slowly at `low`, sells slowly at `buy_price` (high).
+            margin = buy_price - sell_price
+            tax = int(min(buy_price * 0.02, 50000000))
+            net_profit = margin - tax
+
         out.append({
             "item_id": iid,
             "name": t.get("name") or f"Item {iid}",
@@ -55,8 +69,11 @@ async def list_tracked(repo: Repository = Depends(get_repo)) -> dict:
             "members": bool(t.get("members")),
             "favorite": bool(t.get("favorite")),
             "current_price": current,
-            "buy_price": lp.get("high") if lp else None,
-            "sell_price": lp.get("low") if lp else None,
+            "buy_price": buy_price,
+            "sell_price": sell_price,
+            "margin": margin,
+            "tax": tax,
+            "net_profit": net_profit,
             "change_24h": pct_change(price_at_or_before(points, now - 86400), current),
             "change_7d": pct_change(price_at_or_before(points, now - 7 * 86400), current),
             "trend": trend.classification,
@@ -77,6 +94,12 @@ async def add_tracked(body: TrackRequest, repo: Repository = Depends(get_repo),
     if added and scheduler is not None:
         scheduler.trigger_now()  # kick off backfill promptly
     return {"item_id": body.item_id, "added": added}
+
+
+@router.delete("/groups/{group_name}")
+async def delete_group(group_name: str, repo: Repository = Depends(get_repo)) -> dict:
+    count = await repo.delete_group(group_name.strip())
+    return {"deleted_group": group_name, "items_moved_to_default": count}
 
 
 @router.delete("/{item_id}")
@@ -101,5 +124,6 @@ async def set_group(item_id: int, body: GroupRequest,
               repo: Repository = Depends(get_repo)) -> dict:
     if item_id not in await repo.tracked_ids():
         raise HTTPException(404, "Item is not tracked")
-    await repo.set_group(item_id, body.group.strip())
-    return {"item_id": item_id, "group": body.group.strip()}
+    group_val = (body.group or body.group_name or "Default").strip()
+    await repo.set_group(item_id, group_val)
+    return {"item_id": item_id, "group": group_val, "group_name": group_val}

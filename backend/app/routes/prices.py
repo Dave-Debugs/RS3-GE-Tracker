@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from ..config import ALLOWED_RANGES
 from ..db.repository import Repository
@@ -16,6 +16,7 @@ MA_WINDOWS = {"1h": 3600, "6h": 6 * 3600, "24h": 24 * 3600, "7d": 7 * 86400}
 @router.get("/{item_id}")
 async def price_history(
     item_id: int,
+    request: Request,
     range: str = Query("24h"),
     ma: str | None = Query(None, description="comma list of 1h,6h,24h,7d"),
     repo: Repository = Depends(get_repo),
@@ -29,6 +30,13 @@ async def price_history(
     since, now = range_to_since(range)
     # Pull a little extra history so leading moving averages have context.
     raw = await repo.get_price_history(item_id, since - 7 * 86400, now)
+    if len(raw) < 5 and hasattr(request.app.state, "collector"):
+        try:
+            await request.app.state.collector.backfill_item(item_id)
+            raw = await repo.get_price_history(item_id, since - 7 * 86400, now)
+        except Exception:
+            pass
+
     merged = merge_sources(raw)
     window_points = [p for p in merged if p["timestamp"] >= since]
     charted = downsample(window_points)

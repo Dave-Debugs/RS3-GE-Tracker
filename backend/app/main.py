@@ -22,7 +22,7 @@ from .db.database import Database
 from .db.repository import Repository
 from .logging_config import setup_logging
 from .routes import (
-    export, icons, items, movers, prices, settings, stats, status, tracked,
+    export, icons, items, movers, prices, settings, stats, status, tracked, alerts, portfolio, recipes,
 )
 
 log = logging.getLogger(__name__)
@@ -75,6 +75,9 @@ def create_app() -> FastAPI:
     for module in (items, tracked, prices, stats, movers, settings, status,
                    export, icons):
         app.include_router(module.router)
+    app.include_router(alerts.router)
+    app.include_router(portfolio.router)
+    app.include_router(recipes.router)
 
     @app.get("/api/health")
     def health() -> dict:

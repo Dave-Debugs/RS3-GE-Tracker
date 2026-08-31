@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function TopMovers({ onSelect }: Props) {
-  const [period, setPeriod] = useState<"24h" | "7d" | "30d">("24h");
+  const [period, setPeriod] = useState<"24h" | "7d">("24h");
   const { data, error } = useMovers(period);
 
   const renderList = (title: string, movers: Mover[], showChange: boolean) => (
@@ -20,7 +20,7 @@ export default function TopMovers({ onSelect }: Props) {
           key={m.item_id}
           className="mover-row"
           onClick={() => onSelect(m.item_id, m.name)}
-          title="Open chart"
+          title="Preview chart"
         >
           {m.icon_url ? (
             <img src={m.icon_url} alt="" className="item-icon sm" loading="lazy"
@@ -45,7 +45,7 @@ export default function TopMovers({ onSelect }: Props) {
       <div className="card-head">
         <h2>Top Movers</h2>
         <div className="seg">
-          {(["24h", "7d", "30d"] as const).map((p) => (
+          {(["24h", "7d"] as const).map((p) => (
             <button
               key={p}
               className={"seg-btn" + (period === p ? " active" : "")}

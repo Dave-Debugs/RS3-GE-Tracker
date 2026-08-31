@@ -99,19 +99,20 @@ def mock_api() -> MockAPI:
 
 
 @pytest.fixture
-def client(mock_api) -> RS3PriceClient:
+async def client(mock_api) -> RS3PriceClient:
     c = RS3PriceClient(
         transport=httpx.MockTransport(mock_api.handler), min_interval=0
     )
     yield c
-    c.close()
+    await c.close()
 
 
 @pytest.fixture
-def db(tmp_path) -> Database:
+async def db(tmp_path) -> Database:
     d = Database(tmp_path / "test.db")
+    await d.connect()
     yield d
-    d.close()
+    await d.close()
 
 
 @pytest.fixture

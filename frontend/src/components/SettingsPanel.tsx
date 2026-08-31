@@ -35,6 +35,7 @@ export default function SettingsPanel({ open, status, onClose, onSaved }: Props)
         update_interval_minutes: settings.update_interval_minutes,
         theme: settings.theme,
         default_chart_range: settings.default_chart_range,
+        show_item_tooltips: settings.show_item_tooltips || "true",
         user_agent: settings.user_agent,
         collector_autostart: settings.collector_autostart,
       });
@@ -81,9 +82,19 @@ export default function SettingsPanel({ open, status, onClose, onSaved }: Props)
                 value={settings.default_chart_range}
                 onChange={(e) => update({ default_chart_range: e.target.value })}
               >
-                {["24h", "7d", "14d"].map((r) => (
+                {["1h", "6h", "24h", "7d", "14d", "30d"].map((r) => (
                   <option key={r} value={r}>{r.toUpperCase()}</option>
                 ))}
+              </select>
+            </label>
+            <label>
+              <span>Show item info &amp; Wiki hover tooltips</span>
+              <select
+                value={settings.show_item_tooltips ?? "true"}
+                onChange={(e) => update({ show_item_tooltips: e.target.value })}
+              >
+                <option value="true">Enabled (Hover on ingredients)</option>
+                <option value="false">Disabled</option>
               </select>
             </label>
             <label>

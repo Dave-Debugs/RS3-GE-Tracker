@@ -54,11 +54,15 @@ export default function SearchBar({ trackedIds, onTrack, onSelect }: Props) {
       <div className="search-input-wrap">
         <span className="search-icon">🔍</span>
         <input
+          id="global-search-input"
           className="search-input"
-          placeholder="Search Grand Exchange items…  (name or item ID)"
+          placeholder="Search Grand Exchange items… (Press / to search)"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => results.length && setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setOpen(false);
+          }}
         />
         {loading && <span className="search-spinner">…</span>}
       </div>

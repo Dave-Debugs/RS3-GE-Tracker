@@ -81,6 +81,36 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id         INTEGER NOT NULL,
+    condition       TEXT NOT NULL,
+    threshold_price INTEGER NOT NULL,
+    active          INTEGER NOT NULL DEFAULT 1,
+    last_triggered  INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS portfolio (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id            INTEGER NOT NULL,
+    quantity           INTEGER NOT NULL DEFAULT 0,
+    buy_price_per_item INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS recipes (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT NOT NULL,
+    output_item_id INTEGER NOT NULL,
+    output_qty     INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS recipe_ingredients (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipe_id INTEGER NOT NULL,
+    item_id   INTEGER NOT NULL,
+    qty       INTEGER NOT NULL DEFAULT 1
+);
 """
 
 

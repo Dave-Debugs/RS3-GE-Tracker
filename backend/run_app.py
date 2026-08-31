@@ -1,6 +1,16 @@
+import sys
+import io
+if sys.stdout is None:
+    class DummyOutput:
+        def write(self, x): pass
+        def flush(self): pass
+        def isatty(self): return False
+    sys.stdout = DummyOutput()
+if sys.stderr is None:
+    sys.stderr = DummyOutput()
+
 import uvicorn
 import multiprocessing
-import sys
 import threading
 import time
 import webbrowser

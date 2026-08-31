@@ -3,16 +3,19 @@ import { changeClass, formatGP, formatGPExact, formatPct, formatVolume } from ".
 
 interface Props {
   name: string | null;
+  itemId?: number | null;
+  isTracked?: boolean;
   stats: ItemStats | null;
   trend: TrendInfo | null;
+  onTrack?: (item: { item_id: number; name?: string }) => void;
 }
 
-export default function StatsPanel({ name, stats, trend }: Props) {
+export default function StatsPanel({ name, itemId, isTracked = true, stats, trend, onTrack }: Props) {
   if (!name || !stats) {
     return (
       <section className="card stats-card">
         <h2>Price Statistics</h2>
-        <p className="muted empty-hint">Select a tracked item to see its stats.</p>
+        <p className="muted empty-hint">Select a tracked item or click any Top Mover to preview stats.</p>
       </section>
     );
   }
@@ -31,7 +34,26 @@ export default function StatsPanel({ name, stats, trend }: Props) {
     : trend?.classification.includes("Falling") ? "down" : "neutral";
   return (
     <section className="card stats-card">
-      <h2>{name}</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "8px" }}>
+        <div>
+          <h2 style={{ margin: 0 }}>{name}</h2>
+          {!isTracked && (
+            <span className="pill" style={{ background: "rgba(232, 182, 76, 0.15)", color: "var(--accent)", fontSize: "10px", padding: "1px 6px", marginTop: "4px", display: "inline-block" }}>
+              Preview Mode
+            </span>
+          )}
+        </div>
+        {!isTracked && itemId && onTrack && (
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ fontSize: "11px", padding: "4px 8px" }}
+            onClick={() => onTrack({ item_id: itemId, name })}
+          >
+            + Track Item
+          </button>
+        )}
+      </div>
       {trend && (
         <div className={`trend-banner ${trendCls}`}>
           <span className="trend-label">{trend.classification}</span>

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from ..db.repository import Repository
 from ..deps import get_repo
@@ -18,6 +18,7 @@ MIN_VOLUME_24H = 2000    # require real liquidity so manipulation spikes
 
 @router.get("")
 async def top_movers(
+    request: Request,
     period: str = Query("24h"),
     limit: int = Query(10, le=50),
     repo: Repository = Depends(get_repo),
@@ -28,8 +29,54 @@ async def top_movers(
     then = now - PERIODS[period]
 
     current = await repo.avg_price_around(now, window=3 * 3600)
+    if len(current) < 100:
+        client = request.app.state.client
+        try:
+            api_data = await client.latest()
+            for iid_str, entry in api_data.items():
+                try:
+                    iid = int(iid_str)
+                    high = entry.get("high")
+                    low = entry.get("low")
+                    if high is not None and low is not None:
+                        current[iid] = (high + low) / 2
+                    elif high is not None:
+                        current[iid] = high
+                    elif low is not None:
+                        current[iid] = low
+                except (ValueError, TypeError):
+                    continue
+        except Exception as e:
+            pass
+            
     past = await repo.avg_price_around(then, window=6 * 3600)
+    
+    if len(past) < 100:
+        # Fallback to API if database is empty/missing old data
+        client = request.app.state.client
+        try:
+            # wiki API accepts closest 1h bucket timestamp
+            bucket_ts = (then // 3600) * 3600
+            _, api_data = await client.one_hour(bucket_ts)
+            for iid_str, entry in api_data.items():
+                try:
+                    iid = int(iid_str)
+                    high = entry.get("avgHighPrice")
+                    low = entry.get("avgLowPrice")
+                    if high is not None and low is not None:
+                        past[iid] = (high + low) / 2
+                    elif high is not None:
+                        past[iid] = high
+                    elif low is not None:
+                        past[iid] = low
+                except (ValueError, TypeError):
+                    continue
+        except Exception as e:
+            pass # ignore and just use what we have
+
     volume = await repo.volume_since(now - 86400)
+    has_volume_data = len(volume) > 100
+    min_vol = MIN_VOLUME_24H if has_volume_data else 0
 
     changes = []
     for iid, price_now in current.items():
@@ -37,7 +84,7 @@ async def top_movers(
         if (
             price_then is None or price_then < MIN_PRICE
             or price_now < MIN_PRICE
-            or volume.get(iid, 0) < MIN_VOLUME_24H
+            or volume.get(iid, 0) < min_vol
         ):
             continue
         changes.append((iid, price_now, price_then,

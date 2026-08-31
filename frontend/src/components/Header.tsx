@@ -3,18 +3,20 @@ import { relativeTime } from "../lib/format";
 
 interface Props {
   status: StatusInfo | null;
+  alertsCount?: number;
   onOpenSettings: () => void;
+  onOpenAlerts: () => void;
   onCollectNow: () => void;
 }
 
-export default function Header({ status, onOpenSettings, onCollectNow }: Props) {
+export default function Header({ status, alertsCount = 0, onOpenSettings, onOpenAlerts, onCollectNow }: Props) {
   const online = status?.api_online ?? false;
   return (
     <header className="header">
       <div className="header-title">
         <div>
           <h1>RS3 Grand Exchange Tracker</h1>
-          <span className="header-sub">Rolling 7-day market history</span>
+          <span className="header-sub">Rolling 14-day market history · <kbd style={{ background: "var(--bg-soft)", padding: "1px 5px", borderRadius: "4px", border: "1px solid var(--card-border)", fontSize: "11px" }}>/</kbd> to search</span>
         </div>
       </div>
       <div className="header-status">
@@ -27,6 +29,9 @@ export default function Header({ status, onOpenSettings, onCollectNow }: Props) 
         <span className="status-item" title="Next scheduled collection">
           Next: <b>{relativeTime(status?.next_update)}</b>
         </span>
+        <button className="btn btn-ghost" onClick={onOpenAlerts} title="Manage price alerts">
+          🔔 Alerts {alertsCount > 0 && <span className="count-badge" style={{ marginLeft: "4px" }}>{alertsCount}</span>}
+        </button>
         <button className="btn btn-ghost" onClick={onCollectNow} title="Collect prices now">
           ↻ Refresh
         </button>

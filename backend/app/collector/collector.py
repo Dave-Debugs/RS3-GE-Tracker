@@ -163,6 +163,44 @@ class Collector:
                      deleted, self.retention_days)
         return deleted
 
+    # ------------------------------------------------------------- alerts
+    async def process_alerts(self, latest: dict) -> None:
+        try:
+            from win11toast import toast
+        except ImportError:
+            toast = None
+
+        alerts = await self.repo.get_active_alerts()
+        now = int(time.time())
+        for alert in alerts:
+            iid = alert["item_id"]
+            entry = latest.get(str(iid)) or latest.get(iid)
+            if not entry or not isinstance(entry, dict):
+                continue
+            price = entry.get("high") or entry.get("low") or 0
+            if price == 0:
+                continue
+
+            cond = alert["condition"]
+            thresh = alert["threshold_price"]
+            triggered = False
+            if cond == ">" and price > thresh: triggered = True
+            elif cond == "<" and price < thresh: triggered = True
+            elif cond == ">=" and price >= thresh: triggered = True
+            elif cond == "<=" and price <= thresh: triggered = True
+
+            if triggered:
+                item_name = alert.get("name") or f"Item {iid}"
+                log.info("Alert triggered for %s (id=%d): price %d %s %d",
+                         item_name, iid, price, cond, thresh)
+                if toast is not None:
+                    try:
+                        toast("RS3 GE Tracker Alert", f"{item_name} reached {price:,} gp! (Condition: {cond} {thresh:,})")
+                    except Exception as e:
+                        log.debug("Toast display failed: %s", e)
+
+                await self.repo.trigger_alert(alert["id"], now)
+
     # ----------------------------------------------------------------- run
     async def run_cycle(self) -> dict:
         run_id = await self.repo.start_run()
@@ -174,6 +212,7 @@ class Collector:
 
             latest = await self.client.latest()
             await self.repo.upsert_latest(latest, int(time.time()))
+            await self.process_alerts(latest)
 
             tracked = set(await self.repo.tracked_ids())
 

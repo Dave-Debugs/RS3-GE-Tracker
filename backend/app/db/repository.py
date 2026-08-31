@@ -260,6 +260,15 @@ class Repository:
         )
         await self.db.conn.commit()
 
+    async def delete_group(self, group_name: str) -> int:
+        if not self.db.conn or not group_name or group_name == 'Default': return 0
+        cur = await self.db.conn.execute(
+            "UPDATE tracked_items SET group_name='Default' WHERE group_name=?",
+            (group_name,),
+        )
+        await self.db.conn.commit()
+        return cur.rowcount
+
     async def set_backfilled(self, item_id: int) -> None:
         if not self.db.conn: return
         await self.db.conn.execute(
@@ -364,3 +373,180 @@ class Repository:
         )
         row = await cur.fetchone()
         return dict(row) if row else None
+
+    # ---------------------------------------------------------------- alerts
+    async def get_alerts(self) -> list[dict]:
+        if not self.db.conn: return []
+        cur = await self.db.conn.execute(
+            """SELECT a.*, i.name, i.icon, l.high as latest_high, l.low as latest_low
+               FROM alerts a
+               JOIN items i ON a.item_id = i.item_id
+               LEFT JOIN latest_prices l ON a.item_id = l.item_id
+               ORDER BY a.id DESC"""
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_active_alerts(self) -> list[dict]:
+        if not self.db.conn: return []
+        cur = await self.db.conn.execute(
+            """SELECT a.*, i.name
+               FROM alerts a
+               JOIN items i ON a.item_id = i.item_id
+               WHERE a.active = 1"""
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def create_alert(self, item_id: int, condition: str, threshold_price: int) -> int:
+        if not self.db.conn: return 0
+        cur = await self.db.conn.execute(
+            "INSERT INTO alerts (item_id, condition, threshold_price) VALUES (?, ?, ?)",
+            (item_id, condition, threshold_price),
+        )
+        await self.db.conn.commit()
+        return cur.lastrowid or 0
+
+    async def update_alert(self, alert_id: int, active: bool) -> bool:
+        if not self.db.conn: return False
+        cur = await self.db.conn.execute(
+            "UPDATE alerts SET active = ? WHERE id = ?",
+            (1 if active else 0, alert_id),
+        )
+        await self.db.conn.commit()
+        return (cur.rowcount or 0) > 0
+
+    async def trigger_alert(self, alert_id: int, triggered_at: int) -> bool:
+        if not self.db.conn: return False
+        cur = await self.db.conn.execute(
+            "UPDATE alerts SET active = 0, last_triggered = ? WHERE id = ?",
+            (triggered_at, alert_id),
+        )
+        await self.db.conn.commit()
+        return (cur.rowcount or 0) > 0
+
+    async def delete_alert(self, alert_id: int) -> bool:
+        if not self.db.conn: return False
+        cur = await self.db.conn.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
+        await self.db.conn.commit()
+        return (cur.rowcount or 0) > 0
+
+    # ------------------------------------------------------------- portfolio
+    async def get_portfolio(self) -> dict:
+        if not self.db.conn:
+            return {"items": [], "total_cost": 0, "current_value": 0, "unrealized_profit": 0}
+        query = """
+            SELECT p.id, p.item_id, p.quantity, p.buy_price_per_item,
+                   i.name, i.icon,
+                   l.high as current_price
+            FROM portfolio p
+            JOIN items i ON p.item_id = i.item_id
+            LEFT JOIN latest_prices l ON p.item_id = l.item_id
+            ORDER BY p.id DESC
+        """
+        cur = await self.db.conn.execute(query)
+        items = [dict(r) for r in await cur.fetchall()]
+        total_cost = sum(item["quantity"] * item["buy_price_per_item"] for item in items)
+        current_value = sum(item["quantity"] * (item["current_price"] or item["buy_price_per_item"]) for item in items)
+        return {
+            "items": items,
+            "total_cost": total_cost,
+            "current_value": current_value,
+            "unrealized_profit": current_value - total_cost,
+        }
+
+    async def add_portfolio_item(self, item_id: int, quantity: int, buy_price_per_item: int) -> int:
+        if not self.db.conn: return 0
+        cur = await self.db.conn.execute(
+            "INSERT INTO portfolio (item_id, quantity, buy_price_per_item) VALUES (?, ?, ?)",
+            (item_id, quantity, buy_price_per_item),
+        )
+        await self.db.conn.commit()
+        return cur.lastrowid or 0
+
+    async def delete_portfolio_item(self, port_id: int) -> bool:
+        if not self.db.conn: return False
+        cur = await self.db.conn.execute("DELETE FROM portfolio WHERE id = ?", (port_id,))
+        await self.db.conn.commit()
+        return (cur.rowcount or 0) > 0
+
+    # --------------------------------------------------------------- recipes
+    async def get_recipes(self) -> list[dict]:
+        if not self.db.conn: return []
+        cur_recipes = await self.db.conn.execute(
+            """SELECT r.*, i.name as output_name, i.icon as output_icon,
+                      i.description as output_description, i.members as output_members,
+                      i.buy_limit as output_buy_limit, i.highalch as output_highalch,
+                      l.low as output_sell_price, l.high as output_buy_price
+               FROM recipes r
+               JOIN items i ON r.output_item_id = i.item_id
+               LEFT JOIN latest_prices l ON r.output_item_id = l.item_id
+               ORDER BY r.id DESC"""
+        )
+        recipes_rows = [dict(r) for r in await cur_recipes.fetchall()]
+
+        cur_ingredients = await self.db.conn.execute(
+            """SELECT ri.*, i.name, i.icon, i.description, i.members,
+                      i.buy_limit, i.highalch, l.high as input_buy_price, l.low as input_sell_price
+               FROM recipe_ingredients ri
+               JOIN items i ON ri.item_id = i.item_id
+               LEFT JOIN latest_prices l ON ri.item_id = l.item_id"""
+        )
+        ingredients_rows = [dict(r) for r in await cur_ingredients.fetchall()]
+
+        ings_by_recipe: dict[int, list[dict]] = {}
+        for ing in ingredients_rows:
+            rid = ing["recipe_id"]
+            if rid not in ings_by_recipe:
+                ings_by_recipe[rid] = []
+            ings_by_recipe[rid].append(ing)
+
+        out = []
+        for r in recipes_rows:
+            rid = r["id"]
+            ings = ings_by_recipe.get(rid, [])
+            cost = sum(ing["qty"] * (ing["input_buy_price"] or 0) for ing in ings)
+            revenue = r["output_qty"] * (r["output_sell_price"] or 0)
+            profit = revenue - cost
+            out.append({
+                "id": rid,
+                "name": r["name"],
+                "output_item_id": r["output_item_id"],
+                "output_name": r["output_name"],
+                "output_icon": r["output_icon"],
+                "output_description": r.get("output_description"),
+                "output_members": bool(r.get("output_members")),
+                "output_buy_limit": r.get("output_buy_limit"),
+                "output_highalch": r.get("output_highalch"),
+                "output_qty": r["output_qty"],
+                "output_sell_price": r["output_sell_price"],
+                "output_buy_price": r.get("output_buy_price"),
+                "cost": cost,
+                "revenue": revenue,
+                "profit": profit,
+                "ingredients": ings,
+            })
+        return out
+
+    async def create_recipe(self, name: str, output_item_id: int, output_qty: int,
+                            ingredients: list[dict]) -> int:
+        if not self.db.conn: return 0
+        cur = await self.db.conn.execute(
+            "INSERT INTO recipes (name, output_item_id, output_qty) VALUES (?, ?, ?)",
+            (name, output_item_id, output_qty),
+        )
+        recipe_id = cur.lastrowid or 0
+        for ing in ingredients:
+            await self.db.conn.execute(
+                "INSERT INTO recipe_ingredients (recipe_id, item_id, qty) VALUES (?, ?, ?)",
+                (recipe_id, ing["item_id"], ing["qty"]),
+            )
+        await self.db.conn.commit()
+        return recipe_id
+
+    async def delete_recipe(self, recipe_id: int) -> bool:
+        if not self.db.conn: return False
+        await self.db.conn.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
+        await self.db.conn.execute("DELETE FROM recipe_ingredients WHERE recipe_id = ?", (recipe_id,))
+        await self.db.conn.commit()
+        return True

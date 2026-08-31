@@ -42,25 +42,27 @@ MAX_CATCHUP_1H_BUCKETS = 6
 MAPPING_REFRESH_SECONDS = 24 * 3600
 
 # --- Retention -------------------------------------------------------------
-# The UI is built around 14 days; retention is configurable internally.
-RETENTION_DAYS = int(os.environ.get("RS3_RETENTION_DAYS", "14"))
+# Rolling data retention in SQLite database (default 35 days to support 30d charts).
+RETENTION_DAYS = int(os.environ.get("RS3_RETENTION_DAYS", "35"))
 
 # --- User-tunable defaults (persisted in DB `settings` table) --------------
 DEFAULT_SETTINGS: dict[str, str] = {
     "update_interval_minutes": "5",           # 5|10|15|30|60
     "theme": "dark",                          # dark|light
-    "default_chart_range": "24h",             # 1h|6h|24h|7d|14d
+    "default_chart_range": "24h",             # 1h|6h|24h|7d|14d|30d
+    "show_item_tooltips": "true",             # true|false (hover info on recipe ingredients)
     "user_agent": DEFAULT_USER_AGENT,
     "collector_autostart": "true",            # start collector with backend
     "database_path": str(DATABASE_PATH),      # informational (read-only in UI)
 }
 
 ALLOWED_INTERVALS = {"5", "10", "15", "30", "60"}
-ALLOWED_RANGES = {"1h", "6h", "24h", "7d", "14d"}
+ALLOWED_RANGES = {"1h", "6h", "24h", "7d", "14d", "30d"}
 CHART_RANGE_SECONDS = {
     "1h": 3600,
     "6h": 6 * 3600,
     "24h": 24 * 3600,
     "7d": 7 * 24 * 3600,
     "14d": 14 * 24 * 3600,
+    "30d": 30 * 24 * 3600,
 }
