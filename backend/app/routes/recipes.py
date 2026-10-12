@@ -9,18 +9,15 @@ from .helpers import icon_url
 
 router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
-
 class IngredientAdd(BaseModel):
     item_id: int
     qty: int
-
 
 class RecipeCreate(BaseModel):
     name: str
     output_item_id: int
     output_qty: int
     ingredients: list[IngredientAdd]
-
 
 @router.get("")
 async def get_recipes(repo: Repository = Depends(get_repo)) -> dict:
@@ -33,12 +30,11 @@ async def get_recipes(repo: Repository = Depends(get_repo)) -> dict:
             ing["wiki_url"] = f"https://runescape.wiki/w/{ing['name'].replace(' ', '_')}"
     return {"recipes": recipes}
 
-
 @router.post("", status_code=201)
 async def create_recipe(data: RecipeCreate, repo: Repository = Depends(get_repo)) -> dict:
     if not await repo.get_item(data.output_item_id):
         raise HTTPException(404, f"Unknown output item id {data.output_item_id}")
-        
+
     for ing in data.ingredients:
         if not await repo.get_item(ing.item_id):
             raise HTTPException(404, f"Unknown ingredient item id {ing.item_id}")
@@ -50,7 +46,6 @@ async def create_recipe(data: RecipeCreate, repo: Repository = Depends(get_repo)
         ingredients=[{"item_id": ing.item_id, "qty": ing.qty} for ing in data.ingredients],
     )
     return {"status": "ok", "id": recipe_id}
-
 
 @router.delete("/{recipe_id}")
 async def delete_recipe(recipe_id: int, repo: Repository = Depends(get_repo)) -> dict:

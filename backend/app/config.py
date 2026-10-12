@@ -1,59 +1,53 @@
-"""Application configuration.
-
-Static config lives here (paths, API constants). User-tunable settings
-(update interval, theme, user agent, ...) are persisted in the SQLite
-`settings` table and exposed via the settings API; defaults are below.
-"""
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
-# --- Paths -----------------------------------------------------------------
 BACKEND_DIR = Path(__file__).resolve().parent.parent
-PROJECT_ROOT = BACKEND_DIR.parent
+if getattr(sys, "frozen", False):
+    PROJECT_ROOT = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "RS3 GE Tracker"
+else:
+    PROJECT_ROOT = BACKEND_DIR.parent
 DATABASE_DIR = Path(os.environ.get("RS3_DB_DIR", PROJECT_ROOT / "database"))
 DATABASE_PATH = Path(os.environ.get("RS3_DB_PATH", DATABASE_DIR / "rs3_tracker.db"))
 LOG_DIR = Path(os.environ.get("RS3_LOG_DIR", PROJECT_ROOT / "logs"))
 
-# --- RS3 real-time prices API (see docs/API.md) ----------------------------
+APP_VERSION = "1.2.0"
+GITHUB_RELEASE_URLS = [
+    "https://api.github.com/repos/Dave-Debugs/RS3-GE-Tracker/releases/latest",
+    "https://api.github.com/repos/dave-debugs/rs3-ge-tracker/releases/latest",
+]
+
 API_BASE_URL = "https://prices.runescape.wiki/api/v2/rs"
 DEFAULT_USER_AGENT = (
-    "RS3-GE-Tracker/1.0 (personal price tracking app; "
-    "https://github.com/local/rs3-price-tracker)"
+    "RS3-GE-Tracker/1.2 (personal price tracking app; "
+    "https://github.com/Dave-Debugs/RS3-GE-Tracker)"
 )
 
-# Politeness / robustness
-MIN_REQUEST_INTERVAL_SECONDS = 1.0   # global throttle between API requests
+MIN_REQUEST_INTERVAL_SECONDS = 1.0
 REQUEST_TIMEOUT_SECONDS = 25
 MAX_RETRIES = 3
-RETRY_BACKOFF_BASE_SECONDS = 2.0     # 2s, 4s, 8s
+RETRY_BACKOFF_BASE_SECONDS = 2.0
 
-# Bucket sizes (seconds)
 BUCKET_5M = 300
 BUCKET_1H = 3600
 
-# Incremental-sync catch-up caps per collection cycle (avoid hammering after
-# long downtime; older gaps for tracked items are healed via /timeseries).
 MAX_CATCHUP_5M_BUCKETS = 12
 MAX_CATCHUP_1H_BUCKETS = 6
 
-# Mapping refresh
 MAPPING_REFRESH_SECONDS = 24 * 3600
 
-# --- Retention -------------------------------------------------------------
-# Rolling data retention in SQLite database (default 35 days to support 30d charts).
 RETENTION_DAYS = int(os.environ.get("RS3_RETENTION_DAYS", "35"))
 
-# --- User-tunable defaults (persisted in DB `settings` table) --------------
 DEFAULT_SETTINGS: dict[str, str] = {
-    "update_interval_minutes": "5",           # 5|10|15|30|60
-    "theme": "dark",                          # dark|light
-    "default_chart_range": "24h",             # 1h|6h|24h|7d|14d|30d
-    "show_item_tooltips": "true",             # true|false (hover info on recipe ingredients)
+    "update_interval_minutes": "5",
+    "theme": "dark",
+    "default_chart_range": "24h",
+    "show_item_tooltips": "true",
     "user_agent": DEFAULT_USER_AGENT,
-    "collector_autostart": "true",            # start collector with backend
-    "database_path": str(DATABASE_PATH),      # informational (read-only in UI)
+    "collector_autostart": "true",
+    "database_path": str(DATABASE_PATH),
 }
 
 ALLOWED_INTERVALS = {"5", "10", "15", "30", "60"}

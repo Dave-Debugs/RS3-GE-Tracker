@@ -9,14 +9,12 @@ from ..deps import get_repo
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
-
 class SettingsUpdate(BaseModel):
     update_interval_minutes: str | None = None
     theme: str | None = None
     default_chart_range: str | None = None
     user_agent: str | None = None
     collector_autostart: str | None = None
-
 
 VALIDATORS = {
     "update_interval_minutes": lambda v: v in ALLOWED_INTERVALS,
@@ -26,11 +24,9 @@ VALIDATORS = {
     "collector_autostart": lambda v: v in {"true", "false"},
 }
 
-
 @router.get("")
 async def get_settings(repo: Repository = Depends(get_repo)) -> dict:
     return await repo.get_settings(DEFAULT_SETTINGS)
-
 
 @router.put("")
 async def update_settings(body: SettingsUpdate,

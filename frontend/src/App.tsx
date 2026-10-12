@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import {
   useStatus,
@@ -14,7 +15,9 @@ import {
   useDeleteGroup,
   useCollectNow,
   useAlerts,
+  usePortfolio,
 } from "./hooks";
+import { formatGP, formatPct } from "./lib/format";
 import Header from "./components/Header";
 import PriceChart from "./components/PriceChart";
 import SearchBar from "./components/SearchBar";
@@ -26,6 +29,7 @@ import TopMovers from "./components/TopMovers";
 import TrackedList from "./components/TrackedList";
 import PortfolioView from "./components/PortfolioView";
 import RecipesView from "./components/RecipesView";
+import ScannerView from "./components/ScannerView";
 import ToastContainer from "./components/ToastContainer";
 import { ToastProvider, useToast } from "./context/ToastContext";
 import type { ChartMode, ChartRange } from "./types";
@@ -34,10 +38,12 @@ const RANGES: ChartRange[] = ["1h", "6h", "24h", "7d", "14d", "30d"];
 const MA_OPTIONS = ["1h", "6h", "24h", "7d"];
 
 function AppInner() {
+  const qc = useQueryClient();
   const { data: status, error: statusError } = useStatus();
   const { data: settings } = useSettings();
   const { data: trackedData = [] } = useTracked();
   const { data: alertsData = [] } = useAlerts();
+  const { data: portfolioData } = usePortfolio();
   const { toast } = useToast();
 
   const [selectedCategory, setSelectedCategory] = useState<string>("__ALL__");
@@ -55,9 +61,8 @@ function AppInner() {
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"dashboard" | "portfolio" | "recipes">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "scanner" | "portfolio" | "recipes">("dashboard");
 
-  // Discover all category groups dynamically from data + user added
   const allCategories = useMemo(() => {
     const fromData = Array.from(new Set(trackedData.map((t) => t.group_name || "Default")));
     const merged = Array.from(new Set(["Default", ...fromData, ...customCategories])).sort((a, b) => {
@@ -68,13 +73,11 @@ function AppInner() {
     return merged;
   }, [trackedData, customCategories]);
 
-  // Filter tracked items for the active category dashboard
   const activeCategoryItems = useMemo(() => {
     if (selectedCategory === "__ALL__") return trackedData;
     return trackedData.filter((t) => (t.group_name || "Default") === selectedCategory);
   }, [trackedData, selectedCategory]);
 
-  // Sync selected IDs logic for the active category
   useEffect(() => {
     if (!activeCategoryItems.length) {
       if (viewedUntracked) {
@@ -86,7 +89,6 @@ function AppInner() {
       const ids = new Set(activeCategoryItems.map((t) => t.item_id));
       const kept = new Set([...prev].filter((id) => ids.has(id)));
       if (kept.size > 0) return kept;
-      // Default select up to 5 items so chart stays clean
       const initial = new Set<number>();
       for (const item of activeCategoryItems.slice(0, 4)) {
         initial.add(item.item_id);
@@ -101,7 +103,6 @@ function AppInner() {
     });
   }, [activeCategoryItems, viewedUntracked]);
 
-  // Global Keyboard Shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (
@@ -125,7 +126,6 @@ function AppInner() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Initialize range from settings
   useEffect(() => {
     if (settings && RANGES.includes(settings.default_chart_range as ChartRange)) {
       setRange(settings.default_chart_range as ChartRange);
@@ -221,10 +221,10 @@ function AppInner() {
         if (selectedCategory === categoryName) {
           setSelectedCategory("__ALL__");
         }
-        toast.info(`Deleted category "${categoryName}". Items moved to Default.`);
+        toast.info(`Deleted item group "${categoryName}". Items moved to Default.`);
       },
       onError: (err) => {
-        toast.error(`Failed to delete category: ${err.message}`);
+        toast.error(`Failed to delete item group: ${err.message}`);
       },
     });
   };
@@ -239,7 +239,6 @@ function AppInner() {
     }
   };
 
-  // Preview an item without polluting the watchlist
   const handleMoverSelect = (itemId: number, name: string) => {
     const isAlreadyTracked = trackedData.some((t) => t.item_id === itemId);
     if (!isAlreadyTracked) {
@@ -275,6 +274,27 @@ function AppInner() {
   else if (seriesError) banner = `Failed to load chart data: ${seriesError.message}`;
 
   const activeAlertsCount = alertsData.filter((a) => a.active).length;
+  const showTooltips = settings?.show_item_tooltips !== "false";
+
+  const kpiStats = useMemo(() => {
+    let bestFlip = activeCategoryItems[0] || null;
+    let bestGainer = activeCategoryItems[0] || null;
+    let total4hPotential = 0;
+
+    for (const item of activeCategoryItems) {
+      const lp = item.limit_profit_4h ?? (item.net_profit && item.buy_limit ? item.net_profit * item.buy_limit : 0);
+      if (lp > 0) total4hPotential += lp;
+      const curBestLp =
+        bestFlip?.limit_profit_4h ??
+        (bestFlip?.net_profit && bestFlip?.buy_limit ? bestFlip.net_profit * bestFlip.buy_limit : -Infinity);
+      if (lp > curBestLp) bestFlip = item;
+
+      if ((item.change_24h ?? -Infinity) > (bestGainer?.change_24h ?? -Infinity)) {
+        bestGainer = item;
+      }
+    }
+    return { bestFlip, bestGainer, total4hPotential };
+  }, [activeCategoryItems]);
 
   return (
     <div className="app">
@@ -298,81 +318,151 @@ function AppInner() {
             setViewedUntracked(null);
           }
           setFocusedId(item.item_id);
+          setActiveTab("dashboard");
           toast.info(`Displaying ${item.name} on dashboard`);
           window.scrollTo({ top: 0, behavior: "smooth" });
         }}
       />
 
-      <div
-        className="tabs"
-        style={{
-          display: "flex",
-          gap: "1rem",
-          padding: "0 0.5rem",
-          borderBottom: "1px solid var(--card-border)",
-          marginBottom: "1rem",
-        }}
-      >
-        <button
-          className={`tab ${activeTab === "dashboard" ? "active" : ""}`}
-          onClick={() => setActiveTab("dashboard")}
-          style={{
-            padding: "0.6rem 1.2rem",
-            background: "transparent",
-            border: "none",
-            borderBottom: activeTab === "dashboard" ? "2px solid var(--accent)" : "2px solid transparent",
-            color: activeTab === "dashboard" ? "var(--fg)" : "var(--fg-dim)",
-            cursor: "pointer",
-            fontWeight: 700,
-            fontSize: "14px",
+      <div className="kpi-strip">
+        <div
+          className="kpi-card clickable"
+          onClick={() => {
+            if (kpiStats.bestFlip) {
+              setActiveTab("dashboard");
+              setFocusedId(kpiStats.bestFlip.item_id);
+            } else {
+              setActiveTab("scanner");
+            }
           }}
+          title="Click to inspect the highest 4-hour buy limit flip in your current view"
         >
-          📊 Dashboard
-        </button>
-        <button
-          className={`tab ${activeTab === "portfolio" ? "active" : ""}`}
+          <span className="kpi-label">Best Watchlist Flip (4h)</span>
+          <div className="kpi-value up">
+            {kpiStats.bestFlip && (kpiStats.bestFlip.limit_profit_4h || kpiStats.bestFlip.net_profit)
+              ? `+${formatGP(kpiStats.bestFlip.limit_profit_4h || kpiStats.bestFlip.net_profit)} gp`
+              : "Scan Market →"}
+          </div>
+          <span className="kpi-sub">
+            {kpiStats.bestFlip
+              ? `${kpiStats.bestFlip.name} (${kpiStats.bestFlip.net_profit ? `+${formatGP(kpiStats.bestFlip.net_profit)}/ea` : "—"})`
+              : "Open Flips & Alchemy scanner"}
+          </span>
+        </div>
+
+        <div
+          className="kpi-card clickable"
+          onClick={() => setActiveTab("scanner")}
+          title="Combined 4-hour limit profit across positive-margin items in this group"
+        >
+          <span className="kpi-label">Group 4h Profit Capacity</span>
+          <div className="kpi-value gold">
+            {kpiStats.total4hPotential > 0 ? `+${formatGP(kpiStats.total4hPotential)} gp` : "—"}
+          </div>
+          <span className="kpi-sub">
+            Across {activeCategoryItems.filter((i) => (i.net_profit ?? 0) > 0).length} profitable items (after 2% tax)
+          </span>
+        </div>
+
+        <div
+          className="kpi-card clickable"
+          onClick={() => {
+            if (kpiStats.bestGainer) {
+              setActiveTab("dashboard");
+              setFocusedId(kpiStats.bestGainer.item_id);
+            }
+          }}
+          title="Top 24-hour percentage mover in your active watchlist group"
+        >
+          <span className="kpi-label">24h Watchlist Leader</span>
+          <div
+            className={`kpi-value ${
+              (kpiStats.bestGainer?.change_24h ?? 0) >= 0 ? "up" : "down"
+            }`}
+          >
+            {kpiStats.bestGainer?.change_24h != null
+              ? formatPct(kpiStats.bestGainer.change_24h)
+              : "—"}
+          </div>
+          <span className="kpi-sub">
+            {kpiStats.bestGainer ? kpiStats.bestGainer.name : "No tracked items"}
+          </span>
+        </div>
+
+        <div
+          className="kpi-card clickable"
           onClick={() => setActiveTab("portfolio")}
-          style={{
-            padding: "0.6rem 1.2rem",
-            background: "transparent",
-            border: "none",
-            borderBottom: activeTab === "portfolio" ? "2px solid var(--accent)" : "2px solid transparent",
-            color: activeTab === "portfolio" ? "var(--fg)" : "var(--fg-dim)",
-            cursor: "pointer",
-            fontWeight: 700,
-            fontSize: "14px",
-          }}
+          title="Click to manage your held items and investments"
         >
-          💼 Portfolio
+          <span className="kpi-label">Portfolio Net Value</span>
+          <div className="kpi-value">
+            {portfolioData && portfolioData.current_value > 0
+              ? `${formatGP(portfolioData.current_value)} gp`
+              : "0 gp"}
+          </div>
+          <span
+            className={`kpi-sub ${
+              portfolioData && portfolioData.unrealized_profit > 0
+                ? "up"
+                : portfolioData && portfolioData.unrealized_profit < 0
+                ? "down"
+                : ""
+            }`}
+          >
+            {portfolioData && portfolioData.items.length > 0
+              ? `${portfolioData.unrealized_profit >= 0 ? "+" : ""}${formatGP(
+                  portfolioData.unrealized_profit
+                )} gp P/L (${portfolioData.items.length} lots)`
+              : "Track held investments →"}
+          </span>
+        </div>
+      </div>
+
+      <nav className="nav-tabs" aria-label="Main workspace navigation">
+        <button
+          type="button"
+          className={`nav-tab ${activeTab === "dashboard" ? "active" : ""}`}
+          onClick={() => setActiveTab("dashboard")}
+        >
+          <span className="nav-tab-label">Market Dashboard</span>
+          <span className="nav-tab-badge">{trackedData.length}</span>
         </button>
         <button
-          className={`tab ${activeTab === "recipes" ? "active" : ""}`}
-          onClick={() => setActiveTab("recipes")}
-          style={{
-            padding: "0.6rem 1.2rem",
-            background: "transparent",
-            border: "none",
-            borderBottom: activeTab === "recipes" ? "2px solid var(--accent)" : "2px solid transparent",
-            color: activeTab === "recipes" ? "var(--fg)" : "var(--fg-dim)",
-            cursor: "pointer",
-            fontWeight: 700,
-            fontSize: "14px",
-          }}
+          type="button"
+          className={`nav-tab ${activeTab === "scanner" ? "active" : ""}`}
+          onClick={() => setActiveTab("scanner")}
         >
-          ⚒ Recipes &amp; Margins
+          <span className="nav-tab-label">Flips &amp; High Alch</span>
+          <span className="nav-tab-pill">Scanner</span>
         </button>
-      </div>
+        <button
+          type="button"
+          className={`nav-tab ${activeTab === "portfolio" ? "active" : ""}`}
+          onClick={() => setActiveTab("portfolio")}
+        >
+          <span className="nav-tab-label">Portfolio</span>
+          {portfolioData && portfolioData.items.length > 0 && (
+            <span className="nav-tab-badge">{portfolioData.items.length}</span>
+          )}
+        </button>
+        <button
+          type="button"
+          className={`nav-tab ${activeTab === "recipes" ? "active" : ""}`}
+          onClick={() => setActiveTab("recipes")}
+        >
+          <span className="nav-tab-label">Recipes &amp; Crafting</span>
+        </button>
+      </nav>
 
       {activeTab === "dashboard" && (
         <>
-          {/* Category Dashboard Switcher Bar */}
           <div className="category-bar">
             <div className="category-tabs">
               <button
                 className={`category-tab ${selectedCategory === "__ALL__" ? "active" : ""}`}
                 onClick={() => setSelectedCategory("__ALL__")}
               >
-                🌐 All Items <span className="cat-count">{trackedData.length}</span>
+                All Items <span className="cat-count">{trackedData.length}</span>
               </button>
               {allCategories.map((cat) => {
                 const count = trackedData.filter((t) => (t.group_name || "Default") === cat).length;
@@ -382,11 +472,11 @@ function AppInner() {
                     className={`category-tab ${selectedCategory === cat ? "active" : ""}`}
                     onClick={() => setSelectedCategory(cat)}
                   >
-                    📁 {cat} <span className="cat-count">{count}</span>
+                    {cat} <span className="cat-count">{count}</span>
                     {cat !== "Default" && (
                       <span
                         className="cat-delete-btn"
-                        title={`Delete category "${cat}" (moves items to Default)`}
+                        title={`Delete item group "${cat}" (moves items to Default)`}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleDeleteCategory(cat);
@@ -412,7 +502,6 @@ function AppInner() {
           <div className="main-grid">
             <div className="main-col">
               <section className="card chart-card">
-                {/* Non-overlapping Preview Banner */}
                 {viewedUntracked && (
                   <div className="chart-preview-banner">
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -556,6 +645,7 @@ function AppInner() {
                 activeCategory={selectedCategory}
                 selectedIds={selectedIds}
                 focusedId={focusedId}
+                showTooltips={showTooltips}
                 onToggleChart={(id) =>
                   setSelectedIds((s) => {
                     const n = new Set(s);
@@ -590,6 +680,16 @@ function AppInner() {
         </>
       )}
 
+      {activeTab === "scanner" && (
+        <ScannerView
+          trackedIds={new Set(trackedData.map((t) => t.item_id))}
+          showTooltips={showTooltips}
+          onInspectItem={(itemId, name) => {
+            setActiveTab("dashboard");
+            handleMoverSelect(itemId, name);
+          }}
+        />
+      )}
       {activeTab === "portfolio" && <PortfolioView />}
       {activeTab === "recipes" && <RecipesView />}
 
@@ -597,7 +697,10 @@ function AppInner() {
         open={settingsOpen}
         status={status || null}
         onClose={() => setSettingsOpen(false)}
-        onSaved={() => toast.success("Settings saved successfully!")}
+        onSaved={() => {
+          qc.invalidateQueries({ queryKey: ["settings"] });
+          toast.success("Settings saved successfully!");
+        }}
       />
 
       <AlertsManagerModal
@@ -616,12 +719,12 @@ function AppInner() {
       <footer className="footer muted">
         Price data © RuneScape Wiki real-time prices · Made by{" "}
         <a
-          href="https://github.com/Davedebugs"
+          href="https://github.com/dave-debugs"
           target="_blank"
           rel="noopener noreferrer"
           style={{ color: "inherit", textDecoration: "underline" }}
         >
-          Davedebugs
+          dave-debugs
         </a>{" "}
         · not affiliated with Jagex
       </footer>

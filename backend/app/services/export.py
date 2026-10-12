@@ -1,4 +1,3 @@
-"""CSV / JSON export of historical price data."""
 from __future__ import annotations
 
 import csv
@@ -11,15 +10,13 @@ CSV_FIELDS = [
     "average_price", "volume",
 ]
 
-
 def _iso(ts: int) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
         "%Y-%m-%d %H:%M:%S"
     )
 
-
 def to_csv(item_id: int, item_name: str, points: list[dict]) -> str:
-    """Excel/Sheets/pandas-friendly CSV (UTF-8, header row, ISO timestamps)."""
+
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=CSV_FIELDS, lineterminator="\r\n")
     writer.writeheader()
@@ -34,7 +31,6 @@ def to_csv(item_id: int, item_name: str, points: list[dict]) -> str:
             "volume": p.get("volume") or 0,
         })
     return buf.getvalue()
-
 
 def to_json(item_id: int, item_name: str, points: list[dict]) -> str:
     return json.dumps({

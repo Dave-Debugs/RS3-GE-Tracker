@@ -1,8 +1,3 @@
-"""Async background scheduler that runs collection cycles at the configured
-interval. Runs inside the FastAPI process (started from the lifespan hook) so
-no separate service is needed; `scripts/run_collector.py` can also run it
-standalone so collection continues while the dashboard is closed.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -14,7 +9,6 @@ from ..db.repository import Repository
 from .collector import Collector
 
 log = logging.getLogger(__name__)
-
 
 class CollectorScheduler:
     def __init__(self, repo: Repository, collector: Collector):
@@ -69,9 +63,9 @@ class CollectorScheduler:
                 await self.collector.run_cycle()
             except Exception:
                 log.exception("Scheduler cycle crashed")
-                
+
             await self.update_interval()
-            
+
             try:
                 await asyncio.wait_for(self._wake.wait(),
                                        timeout=self._interval_seconds)

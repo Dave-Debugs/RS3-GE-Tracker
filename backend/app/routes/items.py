@@ -9,7 +9,6 @@ from .helpers import item_summary
 
 router = APIRouter(prefix="/api/items", tags=["items"])
 
-
 @router.get("/search")
 async def search(q: str = Query("", max_length=100), limit: int = Query(25, le=100),
            repo: Repository = Depends(get_repo)) -> dict:
@@ -29,7 +28,6 @@ async def search(q: str = Query("", max_length=100), limit: int = Query(25, le=1
             "sell_price": lp.get("low") if lp else None,
         })
     return {"query": q, "results": out}
-
 
 @router.get("/{item_id}")
 async def get_item(item_id: int, repo: Repository = Depends(get_repo)) -> dict:

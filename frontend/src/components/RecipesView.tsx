@@ -23,7 +23,6 @@ export default function RecipesView() {
   const [outQty, setOutQty] = useState("1");
   const [ings, setIngs] = useState<{ id: string; qty: string }[]>([{ id: "", qty: "1" }]);
 
-  // Auto-populate ingredients if the output item is in our local DB
   useEffect(() => {
     if (outId && RECIPE_DB[outId]) {
       const dbIngs = RECIPE_DB[outId];

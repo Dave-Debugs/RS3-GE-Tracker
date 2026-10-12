@@ -1,9 +1,3 @@
-"""HTTP client for the RS3 real-time prices API.
-
-Responsibilities: throttling, retries with exponential backoff, timeout
-handling, response validation, and a tiny in-memory TTL cache. See
-docs/API.md for the verified endpoint contract.
-"""
 from __future__ import annotations
 
 import logging
@@ -25,10 +19,8 @@ from ..config import (
 
 log = logging.getLogger(__name__)
 
-
 class ApiError(Exception):
     """Raised when the RS3 price API cannot be reached or returns bad data."""
-
 
 class RS3PriceClient:
     def __init__(
@@ -51,7 +43,6 @@ class RS3PriceClient:
         )
         self.request_count = 0
 
-    # ------------------------------------------------------------------ core
     async def _throttle(self) -> None:
         async with self._lock:
             wait = self._last_request + self.min_interval - time.monotonic()
@@ -102,7 +93,6 @@ class RS3PriceClient:
                 last_error = e
         raise ApiError(f"API request failed after retries: {path}: {last_error}")
 
-    # ------------------------------------------------------------- endpoints
     async def mapping(self) -> list[dict]:
         data = await self._get("/mapping", cache_ttl=3600)
         if not isinstance(data, list):

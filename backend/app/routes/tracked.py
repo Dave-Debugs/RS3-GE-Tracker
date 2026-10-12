@@ -12,19 +12,15 @@ from .helpers import icon_url
 
 router = APIRouter(prefix="/api/tracked", tags=["tracked"])
 
-
 class TrackRequest(BaseModel):
     item_id: int
-
 
 class FavoriteRequest(BaseModel):
     favorite: bool
 
-
 class GroupRequest(BaseModel):
     group: str | None = None
     group_name: str | None = None
-
 
 @router.get("")
 async def list_tracked(repo: Repository = Depends(get_repo)) -> dict:
@@ -51,22 +47,30 @@ async def list_tracked(repo: Repository = Depends(get_repo)) -> dict:
         )
         buy_price = lp.get("high") if lp else None
         sell_price = lp.get("low") if lp else None
-        
+
         margin = None
         tax = None
         net_profit = None
+        roi_pct = None
+        limit_profit_4h = None
+        buy_limit = t.get("buy_limit")
         if buy_price and sell_price:
-            # high = instant buy (lowest ask), low = instant sell (highest bid)
-            # Flipper buys slowly at `low`, sells slowly at `buy_price` (high).
             margin = buy_price - sell_price
-            tax = int(min(buy_price * 0.02, 50000000))
+            tax = int(min(buy_price * 0.02, 50000000)) if buy_price >= 50 else 0
             net_profit = margin - tax
+            if sell_price > 0:
+                roi_pct = round((net_profit / sell_price) * 100, 2)
+            if buy_limit:
+                limit_profit_4h = net_profit * buy_limit
 
         out.append({
             "item_id": iid,
             "name": t.get("name") or f"Item {iid}",
             "icon_url": icon_url(t.get("icon"), iid),
+            "description": t.get("description"),
             "members": bool(t.get("members")),
+            "buy_limit": buy_limit,
+            "highalch": t.get("highalch"),
             "favorite": bool(t.get("favorite")),
             "current_price": current,
             "buy_price": buy_price,
@@ -74,6 +78,8 @@ async def list_tracked(repo: Repository = Depends(get_repo)) -> dict:
             "margin": margin,
             "tax": tax,
             "net_profit": net_profit,
+            "roi_pct": roi_pct,
+            "limit_profit_4h": limit_profit_4h,
             "change_24h": pct_change(price_at_or_before(points, now - 86400), current),
             "change_7d": pct_change(price_at_or_before(points, now - 7 * 86400), current),
             "trend": trend.classification,
@@ -84,7 +90,6 @@ async def list_tracked(repo: Repository = Depends(get_repo)) -> dict:
         })
     return {"tracked": out}
 
-
 @router.post("", status_code=201)
 async def add_tracked(body: TrackRequest, repo: Repository = Depends(get_repo),
                 scheduler=Depends(get_scheduler)) -> dict:
@@ -92,15 +97,13 @@ async def add_tracked(body: TrackRequest, repo: Repository = Depends(get_repo),
         raise HTTPException(404, f"Unknown item id {body.item_id}")
     added = await repo.add_tracked(body.item_id)
     if added and scheduler is not None:
-        scheduler.trigger_now()  # kick off backfill promptly
+        scheduler.trigger_now()
     return {"item_id": body.item_id, "added": added}
-
 
 @router.delete("/groups/{group_name}")
 async def delete_group(group_name: str, repo: Repository = Depends(get_repo)) -> dict:
     count = await repo.delete_group(group_name.strip())
     return {"deleted_group": group_name, "items_moved_to_default": count}
-
 
 @router.delete("/{item_id}")
 async def remove_tracked(item_id: int, repo: Repository = Depends(get_repo)) -> dict:
@@ -109,7 +112,6 @@ async def remove_tracked(item_id: int, repo: Repository = Depends(get_repo)) -> 
         raise HTTPException(404, "Item is not tracked")
     return {"item_id": item_id, "removed": True}
 
-
 @router.put("/{item_id}/favorite")
 async def set_favorite(item_id: int, body: FavoriteRequest,
                  repo: Repository = Depends(get_repo)) -> dict:
@@ -117,7 +119,6 @@ async def set_favorite(item_id: int, body: FavoriteRequest,
         raise HTTPException(404, "Item is not tracked")
     await repo.set_favorite(item_id, body.favorite)
     return {"item_id": item_id, "favorite": body.favorite}
-
 
 @router.put("/{item_id}/group")
 async def set_group(item_id: int, body: GroupRequest,

@@ -1,4 +1,3 @@
-"""All SQL lives here. Higher layers never write raw SQL."""
 from __future__ import annotations
 
 import logging
@@ -9,16 +8,13 @@ from .database import Database
 
 log = logging.getLogger(__name__)
 
-
 def _now() -> int:
     return int(time.time())
-
 
 class Repository:
     def __init__(self, db: Database):
         self.db = db
 
-    # ------------------------------------------------------------------ items
     async def upsert_items(self, items: Iterable[dict[str, Any]]) -> int:
         now = _now()
         rows = [
@@ -75,7 +71,7 @@ class Repository:
         return {r["item_id"]: dict(r) for r in rows}
 
     async def search_items(self, pattern: str, limit: int = 25) -> list[dict]:
-        """LIKE search; fuzzy layer sits above in services.search."""
+
         if not self.db.conn: return []
         cur = await self.db.conn.execute(
             """SELECT * FROM items WHERE name LIKE ? COLLATE NOCASE
@@ -92,7 +88,6 @@ class Repository:
         rows = await cur.fetchall()
         return [(r["item_id"], r["name"]) for r in rows]
 
-    # ---------------------------------------------------------------- prices
     async def insert_price_rows(self, rows: list[dict[str, Any]]) -> tuple[int, int]:
         if not rows or not self.db.conn:
             return 0, 0
@@ -110,11 +105,11 @@ class Repository:
             [{**r, "created_at": now} for r in rows],
         )
         await self.db.conn.commit()
-        
+
         cur_after = await self.db.conn.execute("SELECT COUNT(*) FROM price_history")
         row_after = await cur_after.fetchone()
         after = row_after[0] if row_after else 0
-        
+
         inserted = after - before
         return inserted, len(rows) - inserted
 
@@ -170,7 +165,6 @@ class Repository:
         row = await cur.fetchone()
         return row[0] if row else None
 
-    # -------- market-wide snapshot queries (Top Movers), based on 1h data ---
     async def avg_price_around(self, ts: int, window: int = 2 * 3600) -> dict[int, float]:
         if not self.db.conn: return {}
         cur = await self.db.conn.execute(
@@ -194,7 +188,6 @@ class Repository:
         rows = await cur.fetchall()
         return {r["item_id"]: r["v"] or 0 for r in rows}
 
-    # -------------------------------------------------------------- latest
     async def upsert_latest(self, data: dict[str, dict], fetched_at: int) -> None:
         if not self.db.conn: return
         rows = [
@@ -226,7 +219,6 @@ class Repository:
         rows = await cur.fetchall()
         return {r["item_id"]: dict(r) for r in rows}
 
-    # ------------------------------------------------------------- tracked
     async def add_tracked(self, item_id: int) -> bool:
         if not self.db.conn: return False
         cur = await self.db.conn.execute(
@@ -279,7 +271,8 @@ class Repository:
     async def tracked(self) -> list[dict]:
         if not self.db.conn: return []
         cur = await self.db.conn.execute(
-            """SELECT t.*, i.name, i.icon, i.members, i.description
+            """SELECT t.*, i.name, i.icon, i.members, i.description,
+                      i.buy_limit, i.highalch
                FROM tracked_items t LEFT JOIN items i USING (item_id)
                ORDER BY t.group_name ASC, t.favorite DESC, i.name"""
         )
@@ -302,7 +295,6 @@ class Repository:
         rows = await cur.fetchall()
         return [r["item_id"] for r in rows]
 
-    # ------------------------------------------------------------ sync state
     async def get_state(self, key: str, default: str | None = None) -> str | None:
         if not self.db.conn: return default
         cur = await self.db.conn.execute(
@@ -320,7 +312,6 @@ class Repository:
         )
         await self.db.conn.commit()
 
-    # -------------------------------------------------------------- settings
     async def get_settings(self, defaults: dict[str, str]) -> dict[str, str]:
         if not self.db.conn: return defaults
         cur = await self.db.conn.execute("SELECT key, value FROM settings")
@@ -337,7 +328,6 @@ class Repository:
         )
         await self.db.conn.commit()
 
-    # -------------------------------------------------------- collection log
     async def start_run(self) -> int:
         if not self.db.conn: return 0
         cur = await self.db.conn.execute(
@@ -361,7 +351,7 @@ class Repository:
     async def last_run(self) -> dict | None:
         if not self.db.conn: return None
         cur = await self.db.conn.execute(
-            "SELECT * FROM collection_runs ORDER BY id DESC LIMIT 1"
+            "SELECT * FROM collection_runs WHERE finished_at IS NOT NULL ORDER BY id DESC LIMIT 1"
         )
         row = await cur.fetchone()
         return dict(row) if row else None
@@ -374,7 +364,6 @@ class Repository:
         row = await cur.fetchone()
         return dict(row) if row else None
 
-    # ---------------------------------------------------------------- alerts
     async def get_alerts(self) -> list[dict]:
         if not self.db.conn: return []
         cur = await self.db.conn.execute(
@@ -431,7 +420,6 @@ class Repository:
         await self.db.conn.commit()
         return (cur.rowcount or 0) > 0
 
-    # ------------------------------------------------------------- portfolio
     async def get_portfolio(self) -> dict:
         if not self.db.conn:
             return {"items": [], "total_cost": 0, "current_value": 0, "unrealized_profit": 0}
@@ -470,7 +458,6 @@ class Repository:
         await self.db.conn.commit()
         return (cur.rowcount or 0) > 0
 
-    # --------------------------------------------------------------- recipes
     async def get_recipes(self) -> list[dict]:
         if not self.db.conn: return []
         cur_recipes = await self.db.conn.execute(
@@ -550,3 +537,187 @@ class Repository:
         await self.db.conn.execute("DELETE FROM recipe_ingredients WHERE recipe_id = ?", (recipe_id,))
         await self.db.conn.commit()
         return True
+
+    async def get_nature_rune_price(self) -> int:
+        if not self.db.conn:
+            return 350
+        cur = await self.db.conn.execute(
+            """SELECT l.high, l.low FROM latest_prices l
+               LEFT JOIN items i USING (item_id)
+               WHERE l.item_id = 561 OR LOWER(i.name) = 'nature rune'
+               LIMIT 1"""
+        )
+        row = await cur.fetchone()
+        if row:
+            high, low = row["high"], row["low"]
+            if high and low:
+                return round((high + low) / 2)
+            return high or low or 350
+        return 350
+
+    async def _latest_history_ts(self) -> int:
+        if not self.db.conn:
+            return _now()
+        cur = await self.db.conn.execute("SELECT MAX(timestamp) FROM price_history")
+        row = await cur.fetchone()
+        return int(row[0]) if row and row[0] else _now()
+
+    async def scan_flips(
+        self,
+        min_price: int = 100,
+        max_price: int | None = None,
+        min_volume: int = 0,
+        members: bool | None = None,
+        limit: int = 50,
+        sort_by: str = "limit_profit",
+    ) -> list[dict]:
+        if not self.db.conn:
+            return []
+        since_24h = (await self._latest_history_ts()) - 86400
+        vol_map = await self.volume_since(since_24h)
+        has_vol = len(vol_map) > 50
+
+        sql = """
+            SELECT i.item_id, i.name, i.icon, i.description, i.members,
+                   i.buy_limit, i.highalch, l.high, l.low, l.high_time, l.low_time, l.fetched_at
+            FROM latest_prices l
+            JOIN items i ON l.item_id = i.item_id
+            WHERE l.high IS NOT NULL AND l.low IS NOT NULL
+              AND l.high > l.low AND l.low >= ?
+        """
+        params: list[Any] = [min_price]
+        if max_price is not None and max_price > 0:
+            sql += " AND l.low <= ?"
+            params.append(max_price)
+        if members is not None:
+            sql += " AND i.members = ?"
+            params.append(1 if members else 0)
+
+        cur = await self.db.conn.execute(sql, params)
+        rows = await cur.fetchall()
+
+        results = []
+        for r in rows:
+            iid = r["item_id"]
+            vol = vol_map.get(iid, 0)
+            if has_vol and min_volume > 0 and vol < min_volume:
+                continue
+            ht, lt = r["high_time"], r["low_time"]
+            if ht and lt and abs(int(ht) - int(lt)) > 86400:
+                continue
+            sell_target = int(r["high"])
+            buy_offer = int(r["low"])
+            margin = sell_target - buy_offer
+            tax = int(min(sell_target * 0.02, 50_000_000)) if sell_target >= 50 else 0
+            net_profit = margin - tax
+            if net_profit <= 0:
+                continue
+            roi = round((net_profit / buy_offer) * 100, 2) if buy_offer > 0 else 0.0
+            if roi > 60.0:
+                continue
+            buy_limit = r["buy_limit"] or 1
+            limit_profit = net_profit * buy_limit
+            results.append({
+                "item_id": iid,
+                "name": r["name"],
+                "icon": r["icon"],
+                "description": r["description"],
+                "members": bool(r["members"]),
+                "buy_limit": r["buy_limit"],
+                "highalch": r["highalch"],
+                "buy_price": sell_target,
+                "sell_price": buy_offer,
+                "margin": margin,
+                "tax": tax,
+                "net_profit": net_profit,
+                "roi_pct": roi,
+                "limit_profit_4h": limit_profit,
+                "volume_24h": int(vol),
+                "last_updated": r["fetched_at"],
+            })
+
+        sort_keys = {
+            "limit_profit": lambda x: x["limit_profit_4h"],
+            "net_profit": lambda x: x["net_profit"],
+            "roi": lambda x: x["roi_pct"],
+            "volume": lambda x: x["volume_24h"],
+        }
+        key_fn = sort_keys.get(sort_by, sort_keys["limit_profit"])
+        results.sort(key=key_fn, reverse=True)
+        return results[:limit]
+
+    async def scan_alchemy(
+        self,
+        min_volume: int = 0,
+        members: bool | None = None,
+        limit: int = 50,
+        sort_by: str = "limit_profit",
+    ) -> dict[str, Any]:
+        nat_price = await self.get_nature_rune_price()
+        if not self.db.conn:
+            return {"nature_rune_price": nat_price, "items": []}
+
+        since_24h = (await self._latest_history_ts()) - 86400
+        vol_map = await self.volume_since(since_24h)
+        has_vol = len(vol_map) > 50
+
+        sql = """
+            SELECT i.item_id, i.name, i.icon, i.description, i.members,
+                   i.buy_limit, i.highalch, l.high, l.low, l.fetched_at
+            FROM items i
+            JOIN latest_prices l ON i.item_id = l.item_id
+            WHERE i.highalch IS NOT NULL AND i.highalch > 0
+              AND (l.low IS NOT NULL OR l.high IS NOT NULL)
+        """
+        params: list[Any] = []
+        if members is not None:
+            sql += " AND i.members = ?"
+            params.append(1 if members else 0)
+
+        cur = await self.db.conn.execute(sql, params)
+        rows = await cur.fetchall()
+
+        results = []
+        for r in rows:
+            iid = r["item_id"]
+            vol = vol_map.get(iid, 0)
+            if has_vol and min_volume > 0 and vol < min_volume:
+                continue
+            buy_cost = int(r["low"] or r["high"] or 0)
+            if buy_cost <= 0:
+                continue
+            alch_val = int(r["highalch"])
+            total_cost = buy_cost + nat_price
+            net_profit = alch_val - total_cost
+            if net_profit <= -500:
+                continue
+            roi = round((net_profit / total_cost) * 100, 2) if total_cost > 0 else 0.0
+            buy_limit = r["buy_limit"] or 1
+            limit_profit = net_profit * buy_limit
+            results.append({
+                "item_id": iid,
+                "name": r["name"],
+                "icon": r["icon"],
+                "description": r["description"],
+                "members": bool(r["members"]),
+                "buy_limit": r["buy_limit"],
+                "highalch": alch_val,
+                "buy_price": int(r["high"] or buy_cost),
+                "sell_price": int(r["low"] or buy_cost),
+                "nature_rune_price": nat_price,
+                "net_profit": net_profit,
+                "roi_pct": roi,
+                "limit_profit_4h": limit_profit,
+                "volume_24h": int(vol),
+                "last_updated": r["fetched_at"],
+            })
+
+        sort_keys = {
+            "limit_profit": lambda x: x["limit_profit_4h"],
+            "net_profit": lambda x: x["net_profit"],
+            "roi": lambda x: x["roi_pct"],
+            "volume": lambda x: x["volume_24h"],
+        }
+        key_fn = sort_keys.get(sort_by, sort_keys["limit_profit"])
+        results.sort(key=key_fn, reverse=True)
+        return {"nature_rune_price": nat_price, "items": results[:limit]}

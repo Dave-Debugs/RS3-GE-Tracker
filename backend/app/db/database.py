@@ -1,8 +1,3 @@
-"""SQLite connection management and schema.
-
-SQLite is used in WAL mode so the background collector (writer) and the API
-(readers) can work concurrently. All timestamps are Unix epoch seconds (UTC).
-"""
 from __future__ import annotations
 
 import logging
@@ -27,7 +22,6 @@ CREATE TABLE IF NOT EXISTS items (
     last_updated INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_items_name ON items(name COLLATE NOCASE);
-
 CREATE TABLE IF NOT EXISTS price_history (
     item_id       INTEGER NOT NULL,
     timestamp     INTEGER NOT NULL,
@@ -42,7 +36,6 @@ CREATE TABLE IF NOT EXISTS price_history (
 CREATE INDEX IF NOT EXISTS idx_price_item ON price_history(item_id);
 CREATE INDEX IF NOT EXISTS idx_price_ts ON price_history(timestamp);
 CREATE INDEX IF NOT EXISTS idx_price_item_ts ON price_history(item_id, timestamp);
-
 CREATE TABLE IF NOT EXISTS latest_prices (
     item_id    INTEGER PRIMARY KEY,
     high       INTEGER,
@@ -51,7 +44,6 @@ CREATE TABLE IF NOT EXISTS latest_prices (
     low_time   INTEGER,
     fetched_at INTEGER NOT NULL
 );
-
 CREATE TABLE IF NOT EXISTS tracked_items (
     item_id  INTEGER PRIMARY KEY,
     added_at INTEGER NOT NULL,
@@ -59,12 +51,10 @@ CREATE TABLE IF NOT EXISTS tracked_items (
     backfilled INTEGER NOT NULL DEFAULT 0,
     group_name TEXT DEFAULT 'Default'
 );
-
 CREATE TABLE IF NOT EXISTS sync_state (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-
 CREATE TABLE IF NOT EXISTS collection_runs (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at        INTEGER NOT NULL,
@@ -76,12 +66,10 @@ CREATE TABLE IF NOT EXISTS collection_runs (
     api_requests      INTEGER NOT NULL DEFAULT 0,
     error             TEXT
 );
-
 CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-
 CREATE TABLE IF NOT EXISTS alerts (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id         INTEGER NOT NULL,
@@ -90,21 +78,18 @@ CREATE TABLE IF NOT EXISTS alerts (
     active          INTEGER NOT NULL DEFAULT 1,
     last_triggered  INTEGER
 );
-
 CREATE TABLE IF NOT EXISTS portfolio (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id            INTEGER NOT NULL,
     quantity           INTEGER NOT NULL DEFAULT 0,
     buy_price_per_item INTEGER NOT NULL DEFAULT 0
 );
-
 CREATE TABLE IF NOT EXISTS recipes (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     name           TEXT NOT NULL,
     output_item_id INTEGER NOT NULL,
     output_qty     INTEGER NOT NULL DEFAULT 1
 );
-
 CREATE TABLE IF NOT EXISTS recipe_ingredients (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     recipe_id INTEGER NOT NULL,
@@ -113,9 +98,7 @@ CREATE TABLE IF NOT EXISTS recipe_ingredients (
 );
 """
 
-
 class Database:
-    """Async SQLite wrapper using aiosqlite."""
 
     def __init__(self, path: str | Path):
         self.path = str(path)
@@ -137,7 +120,7 @@ class Database:
             return
         await self.conn.executescript(SCHEMA)
         await self.conn.commit()
-        # Migration: Add group_name if missing
+
         cursor = await self.conn.execute("PRAGMA table_info(tracked_items)")
         rows = await cursor.fetchall()
         columns = [row["name"] for row in rows]

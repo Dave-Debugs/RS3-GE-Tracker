@@ -8,6 +8,7 @@ import type {
   StatusInfo,
   TrackedItem,
   TrendInfo,
+  UpdateCheckResult,
 } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -21,7 +22,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       const body = await resp.json();
       detail = body.detail ?? detail;
     } catch {
-      /* keep status */
+
     }
     throw new Error(detail);
   }
@@ -67,4 +68,18 @@ export const api = {
   collectNow: () => request("/api/status/collect-now", { method: "POST" }),
   exportUrl: (item_id: number, format: "csv" | "json", range: ChartRange) =>
     `/api/export/${item_id}?format=${format}&range=${range}`,
+  checkUpdates: () => request<UpdateCheckResult>("/api/updater/check"),
+  applyUpdate: (payload: {
+    download_url: string;
+    checksum_url?: string | null;
+    asset_name?: string | null;
+  }) =>
+    request<{ ok: boolean; applied: boolean; message: string }>(
+      "/api/updater/apply",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
 };
+

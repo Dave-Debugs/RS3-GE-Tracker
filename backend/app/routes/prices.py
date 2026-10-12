@@ -12,7 +12,6 @@ router = APIRouter(prefix="/api/prices", tags=["prices"])
 
 MA_WINDOWS = {"1h": 3600, "6h": 6 * 3600, "24h": 24 * 3600, "7d": 7 * 86400}
 
-
 @router.get("/{item_id}")
 async def price_history(
     item_id: int,
@@ -28,7 +27,7 @@ async def price_history(
         raise HTTPException(404, f"Unknown item id {item_id}")
 
     since, now = range_to_since(range)
-    # Pull a little extra history so leading moving averages have context.
+
     raw = await repo.get_price_history(item_id, since - 7 * 86400, now)
     if len(raw) < 5 and hasattr(request.app.state, "collector"):
         try:

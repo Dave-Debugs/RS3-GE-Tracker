@@ -7,7 +7,7 @@ import recipeDbJson from "../recipes.json";
 const RECIPE_DB = recipeDbJson as Record<string, any>;
 
 interface Props {
-  value: string; // The item ID as a string
+  value: string;
   onChange: (id: string) => void;
   onSelect?: (item: SearchResult) => void;
   placeholder?: string;

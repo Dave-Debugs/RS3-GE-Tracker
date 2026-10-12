@@ -26,7 +26,6 @@ export default function AlertModal({ target, onClose }: Props) {
 
   useEffect(() => {
     if (target) {
-      // Default to slightly above high price or current price
       const base = target.buy_price || target.current_price || 0;
       setCondition(">");
       setThreshold(base ? String(Math.ceil(base * 1.05)) : "");

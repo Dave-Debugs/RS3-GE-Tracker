@@ -1,17 +1,6 @@
-"""Background price collector.
-
-Each cycle:
-  1. Refresh the item mapping (at most every 24 h).
-  2. Fetch /latest for live card prices (single bulk request).
-  3. Incrementally fetch missed /5m buckets (rows kept for tracked items).
-  4. Incrementally fetch missed /1h buckets (rows kept for ALL items —
-     powers Top Movers and 14-day stats).
-  5. Backfill newly tracked items via /timeseries (30d + 7d + 24h).
-  6. Enforce rolling retention (default 14 days).
-  7. Record run statistics and update sync state.
-"""
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
@@ -27,7 +16,6 @@ from ..config import (
 from ..db.repository import Repository
 
 log = logging.getLogger(__name__)
-
 
 def normalize_bucket_row(item_id: int, ts: int, entry: dict, source: str) -> dict | None:
     if not isinstance(entry, dict):
@@ -60,15 +48,15 @@ def normalize_bucket_row(item_id: int, ts: int, entry: dict, source: str) -> dic
         "source": source,
     }
 
-
 class Collector:
     def __init__(self, repo: Repository, client: RS3PriceClient,
                  retention_days: int = RETENTION_DAYS):
         self.repo = repo
         self.client = client
         self.retention_days = retention_days
+        self._backfilled_session: set[int] = set()
+        self._backfill_locks: dict[int, asyncio.Lock] = {}
 
-    # ------------------------------------------------------------- mapping
     async def refresh_mapping_if_stale(self) -> bool:
         last = int(await self.repo.get_state("mapping_refreshed_at", "0") or 0)
         count = await self.repo.item_count()
@@ -80,7 +68,6 @@ class Collector:
         log.info("Item mapping refreshed: %d items", n)
         return True
 
-    # ------------------------------------------------------------- buckets
     async def _catchup_buckets(self, kind: str, bucket: int, cap: int,
                                keep_ids: set[int] | None) -> tuple[int, int]:
         fetch = self.client.five_minute if kind == "5m" else self.client.one_hour
@@ -101,7 +88,7 @@ class Collector:
                 log.warning("%s: %d missed buckets, fetching newest %d ",
                             kind, len(missing), cap)
                 missing = missing[-cap:]
-            targets = missing  # type: ignore[assignment]
+            targets = missing
 
         inserted = skipped = 0
         newest_ts = last
@@ -130,31 +117,35 @@ class Collector:
             await self.repo.set_state(state_key, str(newest_ts))
         return inserted, skipped
 
-    # ------------------------------------------------------------ backfill
     async def backfill_item(self, item_id: int) -> tuple[int, int]:
-        total_ins = total_skip = 0
-        for lookback, source in (("30d", "ts6h"), ("7d", "1h"), ("24h", "5m")):
-            try:
-                points = await self.client.timeseries(item_id, lookback)
-            except ApiError as e:
-                log.error("backfill %s lookback=%s failed: %s", item_id, lookback, e)
-                raise
-            rows = []
-            for p in points:
-                ts = p.get("timestamp")
-                if not isinstance(ts, int):
-                    continue
-                row = normalize_bucket_row(item_id, ts, p, source)
-                if row:
-                    rows.append(row)
-            ins, skp = await self.repo.insert_price_rows(rows)
-            total_ins += ins
-            total_skip += skp
-        await self.repo.set_backfilled(item_id)
-        log.info("Backfilled item %d: %d rows inserted", item_id, total_ins)
-        return total_ins, total_skip
+        lock = self._backfill_locks.setdefault(item_id, asyncio.Lock())
+        async with lock:
+            if item_id in self._backfilled_session:
+                await self.repo.set_backfilled(item_id)
+                return 0, 0
+            total_ins = total_skip = 0
+            for lookback, source in (("30d", "ts6h"), ("7d", "1h"), ("24h", "5m")):
+                try:
+                    points = await self.client.timeseries(item_id, lookback)
+                except ApiError as e:
+                    log.error("backfill %s lookback=%s failed: %s", item_id, lookback, e)
+                    raise
+                rows = []
+                for p in points:
+                    ts = p.get("timestamp")
+                    if not isinstance(ts, int):
+                        continue
+                    row = normalize_bucket_row(item_id, ts, p, source)
+                    if row:
+                        rows.append(row)
+                ins, skp = await self.repo.insert_price_rows(rows)
+                total_ins += ins
+                total_skip += skp
+            self._backfilled_session.add(item_id)
+            await self.repo.set_backfilled(item_id)
+            log.info("Backfilled item %d: %d rows inserted", item_id, total_ins)
+            return total_ins, total_skip
 
-    # ------------------------------------------------------------ retention
     async def enforce_retention(self) -> int:
         cutoff = int(time.time()) - self.retention_days * 86400
         deleted = await self.repo.delete_older_than(cutoff)
@@ -163,7 +154,6 @@ class Collector:
                      deleted, self.retention_days)
         return deleted
 
-    # ------------------------------------------------------------- alerts
     async def process_alerts(self, latest: dict) -> None:
         try:
             from win11toast import toast
@@ -201,7 +191,6 @@ class Collector:
 
                 await self.repo.trigger_alert(alert["id"], now)
 
-    # ----------------------------------------------------------------- run
     async def run_cycle(self) -> dict:
         run_id = await self.repo.start_run()
         start_requests = self.client.request_count
@@ -211,7 +200,10 @@ class Collector:
             await self.refresh_mapping_if_stale()
 
             latest = await self.client.latest()
-            await self.repo.upsert_latest(latest, int(time.time()))
+            now_ts = int(time.time())
+            await self.repo.upsert_latest(latest, now_ts)
+            await self.repo.set_state("last_sync_at", str(now_ts))
+            await self.repo.set_state("last_sync_ok", "1")
             await self.process_alerts(latest)
 
             tracked = set(await self.repo.tracked_ids())

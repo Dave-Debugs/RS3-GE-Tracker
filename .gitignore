@@ -30,6 +30,7 @@ Thumbs.db
 .agents/
 .claude/
 skills/
+skills-lock.json
 
 # Design scratch
 frontend/design-preview.html

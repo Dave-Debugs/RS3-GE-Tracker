@@ -3,6 +3,7 @@ import type { TrackedItem } from "../types";
 import { changeClass, formatGP, formatGPExact, formatPct, formatVolume, relativeTime } from "../lib/format";
 import AlertModal from "./AlertModal";
 import GroupModal from "./GroupModal";
+import ItemTooltip from "./ItemTooltip";
 
 interface Props {
   items: TrackedItem[];
@@ -10,6 +11,7 @@ interface Props {
   activeCategory?: string;
   selectedIds: Set<number>;
   focusedId: number | null;
+  showTooltips?: boolean;
   onToggleChart: (id: number) => void;
   onFocus: (id: number) => void;
   onFavorite: (id: number, fav: boolean) => void;
@@ -19,7 +21,7 @@ interface Props {
   onCreateCategory?: () => void;
 }
 
-type SortField = "name" | "buy_price" | "sell_price" | "margin" | "net_profit" | "volume_24h" | "change_24h" | "change_7d" | "trend";
+type SortField = "name" | "buy_price" | "sell_price" | "margin" | "net_profit" | "limit_profit_4h" | "volume_24h" | "change_24h" | "change_7d" | "trend";
 
 const TREND_ICON: Record<string, string> = {
   "Strongly Rising": "▲▲",
@@ -46,20 +48,19 @@ export default function TrackedList({
   activeCategory = "__ALL__",
   selectedIds,
   focusedId,
+  showTooltips = true,
   onToggleChart,
   onFocus,
   onFavorite,
   onRemove,
   onSetGroup,
   onTrack,
-  onCreateCategory,
 }: Props) {
   const [filter, setFilter] = useState("");
   const [viewMode, setViewMode] = useState<"cards" | "grid">("cards");
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortAsc, setSortAsc] = useState<boolean>(true);
 
-  // Modals state
   const [alertTarget, setAlertTarget] = useState<TrackedItem | null>(null);
   const [groupTarget, setGroupTarget] = useState<{ id: number; name: string } | null>(null);
 
@@ -114,7 +115,7 @@ export default function TrackedList({
   };
 
   const categoryTitle =
-    activeCategory === "__ALL__" ? "All Watchlists" : `Category: ${activeCategory}`;
+    activeCategory === "__ALL__" ? "All Item Groups" : `Item Group: ${activeCategory}`;
 
   return (
     <section className="card tracked-card">
@@ -151,7 +152,7 @@ export default function TrackedList({
         <div className="empty-hint" style={{ textAlign: "center", padding: "32px 16px" }}>
           <p style={{ fontSize: "15px", fontWeight: 600, margin: "0 0 6px" }}>
             {activeCategory !== "__ALL__"
-              ? `No items in category "${activeCategory}" yet`
+              ? `No items in group "${activeCategory}" yet`
               : "Nothing tracked yet"}
           </p>
           <p className="muted" style={{ margin: "0 0 16px", fontSize: "13px" }}>
@@ -206,11 +207,11 @@ export default function TrackedList({
                         <th style={{ cursor: "pointer", textAlign: "right" }} onClick={() => handleSort("sell_price")}>
                           Sell {renderSortIndicator("sell_price")}
                         </th>
-                        <th style={{ cursor: "pointer", textAlign: "right" }} onClick={() => handleSort("margin")}>
-                          Margin {renderSortIndicator("margin")}
-                        </th>
                         <th style={{ cursor: "pointer", textAlign: "right" }} onClick={() => handleSort("net_profit")}>
-                          Net Profit {renderSortIndicator("net_profit")}
+                          Net / Item {renderSortIndicator("net_profit")}
+                        </th>
+                        <th style={{ cursor: "pointer", textAlign: "right" }} onClick={() => handleSort("limit_profit_4h")}>
+                          4h Limit Profit {renderSortIndicator("limit_profit_4h")}
                         </th>
                         <th style={{ cursor: "pointer", textAlign: "right" }} onClick={() => handleSort("volume_24h")}>
                           24H Vol {renderSortIndicator("volume_24h")}
@@ -226,8 +227,6 @@ export default function TrackedList({
                     </thead>
                     <tbody>
                       {group.items.map((item) => {
-                        const marginRatio =
-                          item.margin && item.sell_price ? Math.min(100, Math.max(0, (item.margin / item.sell_price) * 100)) : 0;
                         return (
                           <tr
                             key={item.item_id}
@@ -246,27 +245,34 @@ export default function TrackedList({
                                 onChange={() => onToggleChart(item.item_id)}
                               />
                             </td>
-                            <td style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.6rem 0" }}>
-                              {item.icon_url ? (
-                                <img src={item.icon_url} alt="" width="22" height="22" style={{ objectFit: "contain" }} />
-                              ) : (
-                                <span className="item-icon sm placeholder" />
-                              )}
-                              <span style={{ fontWeight: 600 }}>{item.name}</span>
+                            <td style={{ padding: "0.55rem 0" }}>
+                              <ItemTooltip
+                                enabled={showTooltips}
+                                itemId={item.item_id}
+                                name={item.name}
+                                iconUrl={item.icon_url}
+                                description={item.description}
+                                members={item.members}
+                                buyLimit={item.buy_limit}
+                                highAlch={item.highalch}
+                                buyPrice={item.buy_price}
+                                sellPrice={item.sell_price}
+                              >
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+                                  {item.icon_url ? (
+                                    <img src={item.icon_url} alt="" width="22" height="22" style={{ objectFit: "contain" }} />
+                                  ) : (
+                                    <span className="item-icon sm placeholder" />
+                                  )}
+                                  <span style={{ fontWeight: 600 }}>{item.name}</span>
+                                </span>
+                              </ItemTooltip>
                             </td>
                             <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                               {item.buy_price ? formatGP(item.buy_price) : "—"}
                             </td>
                             <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                               {item.sell_price ? formatGP(item.sell_price) : "—"}
-                            </td>
-                            <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                              <div>{item.margin ? formatGP(item.margin) : "—"}</div>
-                              {marginRatio > 0 && (
-                                <div style={{ height: "3px", width: "40px", background: "var(--card-border)", borderRadius: "2px", marginLeft: "auto", marginTop: "2px" }}>
-                                  <div style={{ height: "100%", width: `${Math.min(100, marginRatio * 10)}%`, background: "var(--accent)", borderRadius: "2px" }} />
-                                </div>
-                              )}
                             </td>
                             <td
                               style={{
@@ -283,6 +289,22 @@ export default function TrackedList({
                             >
                               {item.net_profit ? formatGP(item.net_profit) : "—"}
                             </td>
+                            <td
+                              style={{
+                                textAlign: "right",
+                                fontVariantNumeric: "tabular-nums",
+                                fontWeight: 700,
+                                color:
+                                  item.limit_profit_4h && item.limit_profit_4h > 0
+                                    ? "var(--accent)"
+                                    : item.limit_profit_4h && item.limit_profit_4h < 0
+                                    ? "var(--down)"
+                                    : "var(--fg-dim)",
+                              }}
+                              title={item.buy_limit ? `Limit: ${item.buy_limit.toLocaleString()} / 4h` : "No buy limit data"}
+                            >
+                              {item.limit_profit_4h ? `${item.limit_profit_4h > 0 ? "+" : ""}${formatGP(item.limit_profit_4h)}` : "—"}
+                            </td>
                             <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                               {formatVolume(item.volume_24h)}
                             </td>
@@ -298,7 +320,7 @@ export default function TrackedList({
                               <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end", alignItems: "center" }}>
                                 <select
                                   className="group-select"
-                                  title="Category"
+                                  title="Item Group"
                                   style={{ fontSize: "11px", padding: "2px 4px", maxWidth: "85px" }}
                                   value={item.group_name || "Default"}
                                   onChange={(e) => {
@@ -369,11 +391,25 @@ export default function TrackedList({
                           <span className="item-icon placeholder" />
                         )}
                         <div className="tracked-name">
-                          <span className="name">{item.name}</span>
+                          <ItemTooltip
+                            enabled={showTooltips}
+                            itemId={item.item_id}
+                            name={item.name}
+                            iconUrl={item.icon_url}
+                            description={item.description}
+                            members={item.members}
+                            buyLimit={item.buy_limit}
+                            highAlch={item.highalch}
+                            buyPrice={item.buy_price}
+                            sellPrice={item.sell_price}
+                          >
+                            <span className="name">{item.name}</span>
+                          </ItemTooltip>
                           <span className="sub">
                             {item.backfilled ? relativeTime(item.last_updated) : "backfilling…"}
                             {" · vol "}
                             {formatVolume(item.volume_24h)}
+                            {item.buy_limit ? ` · lim ${item.buy_limit.toLocaleString()}` : ""}
                           </span>
                         </div>
                         <div className="tracked-price" title={formatGPExact(item.current_price)}>
@@ -396,9 +432,13 @@ export default function TrackedList({
                                   : "inherit",
                             }}
                           >
-                            {item.net_profit ? formatGP(item.net_profit) : "—"}
+                            {item.net_profit ? `${item.net_profit > 0 ? "+" : ""}${formatGP(item.net_profit)}` : "—"}
                           </div>
-                          <div className="sub" title="Net profit per flip after GE tax">Margin</div>
+                          <div className="sub" title="Net profit per flip after 2% GE tax · 4h limit potential">
+                            {item.limit_profit_4h && item.limit_profit_4h > 0
+                              ? `+${formatGP(item.limit_profit_4h)} / 4h`
+                              : "Margin (net)"}
+                          </div>
                         </div>
 
                         <div className="tracked-changes">

@@ -16,7 +16,10 @@ export default function Header({ status, alertsCount = 0, onOpenSettings, onOpen
       <div className="header-title">
         <div>
           <h1>RS3 Grand Exchange Tracker</h1>
-          <span className="header-sub">Rolling 14-day market history · <kbd style={{ background: "var(--bg-soft)", padding: "1px 5px", borderRadius: "4px", border: "1px solid var(--card-border)", fontSize: "11px" }}>/</kbd> to search</span>
+          <span className="header-sub">
+            30-day rolling market intelligence · Flipping &amp; Alchemy terminal · Press{" "}
+            <kbd className="kbd-hint">/</kbd> to search
+          </span>
         </div>
       </div>
       <div className="header-status">

@@ -14,7 +14,10 @@ export interface TrackedItem {
   item_id: number;
   name: string;
   icon_url: string | null;
+  description?: string | null;
   members: boolean;
+  buy_limit?: number | null;
+  highalch?: number | null;
   favorite: boolean;
   current_price: number | null;
   buy_price: number | null;
@@ -22,6 +25,8 @@ export interface TrackedItem {
   margin: number | null;
   tax: number | null;
   net_profit: number | null;
+  roi_pct?: number | null;
+  limit_profit_4h?: number | null;
   change_24h: number | null;
   change_7d: number | null;
   trend: string;
@@ -29,6 +34,47 @@ export interface TrackedItem {
   last_updated: number | null;
   backfilled: boolean;
   group_name: string;
+}
+
+export interface FlipScannerItem {
+  item_id: number;
+  name: string;
+  icon: string | null;
+  icon_url: string | null;
+  wiki_url: string;
+  description: string | null;
+  members: boolean;
+  buy_limit: number | null;
+  highalch: number | null;
+  buy_price: number;
+  sell_price: number;
+  margin: number;
+  tax: number;
+  net_profit: number;
+  roi_pct: number;
+  limit_profit_4h: number;
+  volume_24h: number;
+  last_updated: number | null;
+}
+
+export interface AlchScannerItem {
+  item_id: number;
+  name: string;
+  icon: string | null;
+  icon_url: string | null;
+  wiki_url: string;
+  description: string | null;
+  members: boolean;
+  buy_limit: number | null;
+  highalch: number;
+  buy_price: number;
+  sell_price: number;
+  nature_rune_price: number;
+  net_profit: number;
+  roi_pct: number;
+  limit_profit_4h: number;
+  volume_24h: number;
+  last_updated: number | null;
 }
 
 export interface PricePoint {
@@ -117,6 +163,7 @@ export interface PortfolioItem {
   item_id: number;
   name: string;
   icon: string | null;
+  icon_url?: string | null;
   quantity: number;
   buy_price_per_item: number;
   current_price: number | null;
@@ -188,5 +235,18 @@ export interface Settings {
   database_path: string;
 }
 
+export interface UpdateCheckResult {
+  update_available: boolean;
+  current_version: string;
+  latest_version?: string;
+  tag_name?: string;
+  download_url?: string | null;
+  checksum_url?: string | null;
+  asset_name?: string | null;
+  release_url?: string;
+  error?: string;
+}
+
 export type ChartRange = "1h" | "6h" | "24h" | "7d" | "14d" | "30d";
 export type ChartMode = "price" | "percent";
+

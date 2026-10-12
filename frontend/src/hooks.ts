@@ -1,12 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import { ChartRange, Settings, PortfolioStats, Recipe, Alert } from "./types";
+import { ChartRange, Settings, PortfolioStats, Recipe, Alert, FlipScannerItem, AlchScannerItem } from "./types";
 
 export function useStatus() {
   return useQuery({
     queryKey: ["status"],
     queryFn: api.status,
-    refetchInterval: 60000,
+    refetchInterval: (query) => (query.state.data?.api_online ? 15000 : 3000),
   });
 }
 
@@ -24,7 +24,7 @@ export function useTracked() {
       const res = await api.tracked();
       return res.tracked;
     },
-    refetchInterval: 60000,
+    refetchInterval: 30000,
   });
 }
 
@@ -71,13 +71,16 @@ export function useMovers(period: string) {
 export function useCollectNow() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/collector/run", { method: "POST" });
-      if (!res.ok) throw new Error("Failed to trigger collection");
-    },
+    mutationFn: api.collectNow,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tracked"] });
       qc.invalidateQueries({ queryKey: ["status"] });
+      qc.invalidateQueries({ queryKey: ["scanner"] });
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ["tracked"] });
+        qc.invalidateQueries({ queryKey: ["status"] });
+        qc.invalidateQueries({ queryKey: ["scanner"] });
+      }, 2000);
     },
   });
 }
@@ -109,14 +112,7 @@ export function useFavoriteItem() {
 export function useSetGroup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, group }: { id: number; group: string }) => {
-      const res = await fetch(`/api/tracked/${id}/group`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ group }),
-      });
-      if (!res.ok) throw new Error("Failed to set group");
-    },
+    mutationFn: ({ id, group }: { id: number; group: string }) => api.setGroup(id, group),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tracked"] });
     },
@@ -247,8 +243,8 @@ export function useUpdateAlert() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, active }: { id: number; active: boolean }) => {
-      const res = await fetch(`/api/alerts/${id}/toggle`, {
-        method: "POST",
+      const res = await fetch(`/api/alerts/${id}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ active }),
       });
@@ -266,5 +262,52 @@ export function useDeleteAlert() {
       if (!res.ok) throw new Error("Failed to delete alert");
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["alerts"] }),
+  });
+}
+
+export function useFlipScanner(params: {
+  minPrice: number;
+  maxPrice: number | null;
+  minVolume: number;
+  members: boolean | null;
+  sortBy: string;
+}) {
+  return useQuery({
+    queryKey: ["scanner", "flips", params],
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      qs.set("min_price", String(params.minPrice));
+      if (params.maxPrice) qs.set("max_price", String(params.maxPrice));
+      if (params.minVolume) qs.set("min_volume", String(params.minVolume));
+      if (params.members !== null) qs.set("members", String(params.members));
+      qs.set("sort_by", params.sortBy);
+      qs.set("limit", "60");
+      const res = await fetch(`/api/scanner/flips?${qs.toString()}`);
+      if (!res.ok) throw new Error("Failed to scan flips");
+      const data = await res.json();
+      return data.items as FlipScannerItem[];
+    },
+    refetchInterval: 60000,
+  });
+}
+
+export function useAlchScanner(params: {
+  minVolume: number;
+  members: boolean | null;
+  sortBy: string;
+}) {
+  return useQuery({
+    queryKey: ["scanner", "alch", params],
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      if (params.minVolume) qs.set("min_volume", String(params.minVolume));
+      if (params.members !== null) qs.set("members", String(params.members));
+      qs.set("sort_by", params.sortBy);
+      qs.set("limit", "60");
+      const res = await fetch(`/api/scanner/alch?${qs.toString()}`);
+      if (!res.ok) throw new Error("Failed to scan alchemy");
+      return (await res.json()) as { nature_rune_price: number; items: AlchScannerItem[] };
+    },
+    refetchInterval: 60000,
   });
 }

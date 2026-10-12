@@ -1,37 +1,30 @@
-"""Price statistics and basic statistical trend analysis.
-
-These are descriptive statistics over recorded history — not predictions.
-"""
 from __future__ import annotations
 
 import math
 import statistics
 from dataclasses import asdict, dataclass
 
-
 @dataclass
 class TrendResult:
-    classification: str          # Strongly Rising|Rising|Neutral|Falling|Strongly Falling
-    slope_pct_per_day: float     # linear regression slope, % of mean price/day
-    short_ma: float | None       # mean of last ~24h of points
-    long_ma: float | None        # mean of last ~7d of points
-    momentum_pct: float          # % change over the last quarter of the window
-    volatility_pct: float        # stdev of per-point returns, %
+    classification: str
+    slope_pct_per_day: float
+    short_ma: float | None
+    long_ma: float | None
+    momentum_pct: float
+    volatility_pct: float
     r_squared: float
     points_used: int
 
     def to_dict(self) -> dict:
         return asdict(self)
 
-
 def pct_change(old: float | None, new: float | None) -> float | None:
     if old is None or new is None or old == 0:
         return None
     return round((new - old) / old * 100, 2)
 
-
 def price_at_or_before(points: list[dict], ts: int) -> float | None:
-    """Latest average_price at or before ts (points sorted by timestamp)."""
+
     best = None
     for p in points:
         if p["timestamp"] <= ts and p.get("average_price") is not None:
@@ -40,9 +33,8 @@ def price_at_or_before(points: list[dict], ts: int) -> float | None:
             break
     return best
 
-
 def compute_stats(points: list[dict], now: int) -> dict:
-    """Stats over a (≤14-day) window of price rows sorted by timestamp."""
+
     prices = [p["average_price"] for p in points if p.get("average_price") is not None]
     if not prices:
         return {
@@ -74,9 +66,8 @@ def compute_stats(points: list[dict], now: int) -> dict:
         "points": len(points),
     }
 
-
 def linear_regression(xs: list[float], ys: list[float]) -> tuple[float, float, float]:
-    """Least squares fit -> (slope, intercept, r_squared)."""
+
     n = len(xs)
     if n < 2:
         return 0.0, ys[0] if ys else 0.0, 0.0
@@ -92,9 +83,8 @@ def linear_regression(xs: list[float], ys: list[float]) -> tuple[float, float, f
     r2 = (sxy ** 2) / (sxx * syy) if syy else 0.0
     return slope, intercept, r2
 
-
 def moving_average(points: list[dict], window_seconds: int) -> list[dict]:
-    """Trailing moving average series over average_price."""
+
     out = []
     values: list[tuple[int, float]] = [
         (p["timestamp"], p["average_price"])
@@ -110,9 +100,8 @@ def moving_average(points: list[dict], window_seconds: int) -> list[dict]:
         out.append({"timestamp": ts, "value": round(running / (i - start + 1), 2)})
     return out
 
-
 def analyze_trend(points: list[dict]) -> TrendResult:
-    """Classify the current trend from recorded history (descriptive only)."""
+
     series = [
         (p["timestamp"], float(p["average_price"]))
         for p in points if p.get("average_price") is not None
@@ -121,7 +110,7 @@ def analyze_trend(points: list[dict]) -> TrendResult:
         return TrendResult("Neutral", 0.0, None, None, 0.0, 0.0, 0.0, len(series))
 
     ts0 = series[0][0]
-    xs = [(t - ts0) / 86400 for t, _ in series]        # days
+    xs = [(t - ts0) / 86400 for t, _ in series]
     ys = [v for _, v in series]
     mean_price = sum(ys) / len(ys)
     slope, _, r2 = linear_regression(xs, ys)
@@ -140,7 +129,6 @@ def analyze_trend(points: list[dict]) -> TrendResult:
     returns = [(b - a) / a for a, b in zip(ys, ys[1:]) if a]
     vol = (statistics.pstdev(returns) * 100) if len(returns) > 1 else 0.0
 
-    # Classification: combine regression slope with MA crossover confirmation.
     score = slope_pct
     if short_ma and long_ma and long_ma:
         ma_gap_pct = (short_ma - long_ma) / long_ma * 100
@@ -168,13 +156,8 @@ def analyze_trend(points: list[dict]) -> TrendResult:
         points_used=len(series),
     )
 
-
 def merge_sources(points: list[dict]) -> list[dict]:
-    """Collapse rows from multiple sources into one series.
 
-    When several sources cover the same timestamp, prefer the finest
-    resolution (5m > 1h > ts6h). Output sorted by timestamp.
-    """
     priority = {"5m": 0, "1h": 1, "ts6h": 2}
     best: dict[int, dict] = {}
     for p in points:
@@ -186,7 +169,6 @@ def merge_sources(points: list[dict]) -> list[dict]:
             best[ts] = p
     return sorted(best.values(), key=lambda p: p["timestamp"])
 
-
 def downsample(points: list[dict], max_points: int = 1100) -> list[dict]:
-    """Return points directly. LTTB downsampling is handled by the frontend."""
+
     return points

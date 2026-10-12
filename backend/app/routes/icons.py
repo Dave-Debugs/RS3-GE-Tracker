@@ -1,8 +1,3 @@
-"""Item icon proxy with a local disk cache.
-
-Icons are served from the RuneScape Wiki once, then cached forever locally —
-avoids hotlinking issues in browsers and spares the wiki repeated requests.
-"""
 from __future__ import annotations
 
 import logging
@@ -25,7 +20,6 @@ _TRANSPARENT_PNG = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
     "0000000d4944415478da63640000000600022a2c6a0e0000000049454e44ae426082"
 )
-
 
 @router.get("/{item_id}")
 async def icon(item_id: int, request: Request,

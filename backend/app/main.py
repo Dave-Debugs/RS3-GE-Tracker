@@ -1,7 +1,3 @@
-"""FastAPI application entry point.
-
-Run with:  uvicorn app.main:app --port 8000   (from the backend/ directory)
-"""
 from __future__ import annotations
 
 import logging
@@ -22,15 +18,16 @@ from .db.database import Database
 from .db.repository import Repository
 from .logging_config import setup_logging
 from .routes import (
-    export, icons, items, movers, prices, settings, stats, status, tracked, alerts, portfolio, recipes,
+    export, icons, items, movers, prices, settings, stats, status, tracked, alerts, portfolio, recipes, scanner, updater,
 )
+from .services.updater import cleanup_old_updates
 
 log = logging.getLogger(__name__)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+    cleanup_old_updates()
     log.info("RS3 GE Tracker backend starting (db=%s)", DATABASE_PATH)
 
     db = Database(DATABASE_PATH)
@@ -59,11 +56,10 @@ async def lifespan(app: FastAPI):
     await client.close()
     await db.close()
 
-
 def create_app() -> FastAPI:
     app = FastAPI(
         title="RS3 Grand Exchange Tracker",
-        version="0.5.5",
+        version="1.2.0",
         lifespan=lifespan,
     )
     app.add_middleware(
@@ -73,11 +69,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     for module in (items, tracked, prices, stats, movers, settings, status,
-                   export, icons):
+                   export, icons, alerts, portfolio, recipes, scanner, updater):
         app.include_router(module.router)
-    app.include_router(alerts.router)
-    app.include_router(portfolio.router)
-    app.include_router(recipes.router)
 
     @app.get("/api/health")
     def health() -> dict:
@@ -97,6 +90,5 @@ def create_app() -> FastAPI:
         log.warning(f"Frontend dist not found at {dist_dir}. Serving API only.")
 
     return app
-
 
 app = create_app()

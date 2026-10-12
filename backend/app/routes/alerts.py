@@ -9,16 +9,13 @@ from .helpers import icon_url
 
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
 
-
 class AlertCreate(BaseModel):
     item_id: int
-    condition: str  # ">", "<", ">=", "<="
+    condition: str
     threshold_price: int
-
 
 class AlertUpdate(BaseModel):
     active: bool
-
 
 @router.get("")
 async def get_alerts(repo: Repository = Depends(get_repo)) -> dict:
@@ -40,7 +37,6 @@ async def get_alerts(repo: Repository = Depends(get_repo)) -> dict:
         })
     return {"alerts": out}
 
-
 @router.post("", status_code=201)
 async def create_alert(alert: AlertCreate, repo: Repository = Depends(get_repo)) -> dict:
     if alert.condition not in [">", "<", ">=", "<="]:
@@ -53,14 +49,12 @@ async def create_alert(alert: AlertCreate, repo: Repository = Depends(get_repo))
     alert_id = await repo.create_alert(alert.item_id, alert.condition, alert.threshold_price)
     return {"status": "ok", "id": alert_id}
 
-
 @router.put("/{alert_id}")
 async def update_alert(alert_id: int, alert: AlertUpdate, repo: Repository = Depends(get_repo)) -> dict:
     updated = await repo.update_alert(alert_id, alert.active)
     if not updated:
         raise HTTPException(404, "Alert not found")
     return {"status": "ok", "id": alert_id, "active": alert.active}
-
 
 @router.delete("/{alert_id}")
 async def delete_alert(alert_id: int, repo: Repository = Depends(get_repo)) -> dict:

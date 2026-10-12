@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { Settings, StatusInfo } from "../types";
+import type { Settings, StatusInfo, UpdateCheckResult } from "../types";
 import { formatTime } from "../lib/format";
 
 interface Props {
@@ -14,9 +14,14 @@ export default function SettingsPanel({ open, status, onClose, onSaved }: Props)
   const [settings, setSettings] = useState<Settings | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [applyingUpdate, setApplyingUpdate] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
+      setUpdateMessage(null);
       api.settings().then(setSettings).catch((e) => setError(String(e)));
     }
   }, [open]);
@@ -25,6 +30,50 @@ export default function SettingsPanel({ open, status, onClose, onSaved }: Props)
 
   const update = (patch: Partial<Settings>) =>
     setSettings((s) => (s ? { ...s, ...patch } : s));
+
+  const handleCheckUpdates = async () => {
+    setCheckingUpdate(true);
+    setUpdateMessage(null);
+    setError(null);
+    try {
+      const info = await api.checkUpdates();
+      setUpdateInfo(info);
+      if (info.error && !info.update_available) {
+        setUpdateMessage(`You are on v${info.current_version}. (${info.error})`);
+      } else if (!info.update_available) {
+        setUpdateMessage(`You are running the latest version (v${info.current_version}).`);
+      } else {
+        setUpdateMessage(`Update available: v${info.latest_version} (Current: v${info.current_version})`);
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const handleApplyUpdate = async () => {
+    if (!updateInfo?.download_url) {
+      if (updateInfo?.release_url) {
+        window.open(updateInfo.release_url, "_blank", "noopener,noreferrer");
+      }
+      return;
+    }
+    setApplyingUpdate(true);
+    setError(null);
+    try {
+      const res = await api.applyUpdate({
+        download_url: updateInfo.download_url,
+        checksum_url: updateInfo.checksum_url,
+        asset_name: updateInfo.asset_name,
+      });
+      setUpdateMessage(res.message);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setApplyingUpdate(false);
+    }
+  };
 
   const save = async () => {
     if (!settings) return;
@@ -118,6 +167,36 @@ export default function SettingsPanel({ open, status, onClose, onSaved }: Props)
               <span>Database location</span>
               <input value={settings.database_path} readOnly className="readonly" />
             </label>
+            <div className="full" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "8px 0" }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: "13px" }}>Application Version: v1.2.0</div>
+                {updateMessage && (
+                  <div className="muted" style={{ fontSize: "12px", marginTop: "4px" }}>
+                    {updateMessage}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={handleCheckUpdates}
+                  disabled={checkingUpdate || applyingUpdate}
+                >
+                  {checkingUpdate ? "Checking…" : "Check for Updates"}
+                </button>
+                {updateInfo?.update_available && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleApplyUpdate}
+                    disabled={applyingUpdate}
+                  >
+                    {applyingUpdate ? "Downloading…" : `Update to v${updateInfo.latest_version}`}
+                  </button>
+                )}
+              </div>
+            </div>
             <div className="settings-meta muted">
               <span>Items in database: {status?.item_count?.toLocaleString() ?? "—"}</span>
               <span>Price records: {status?.database_records?.toLocaleString() ?? "—"}</span>

@@ -152,8 +152,8 @@ export default function PortfolioView() {
           const totalVal = current * item.quantity;
           return (
             <div key={item.id} className="portfolio-row">
-              {item.icon ? (
-                <img src={item.icon} alt="" className="item-icon sm" />
+              {item.icon_url || item.icon ? (
+                <img src={item.icon_url || item.icon || ""} alt="" className="item-icon sm" />
               ) : (
                 <span className="item-icon sm placeholder" />
               )}

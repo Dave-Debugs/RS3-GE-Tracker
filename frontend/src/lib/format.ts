@@ -1,4 +1,3 @@
-/** GP formatting: 500 · 12,500 · 125K · 1.25M · 125M · 2.1B */
 export function formatGP(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
   const abs = Math.abs(value);
@@ -16,7 +15,7 @@ function trimZeros(s: string): string {
   return s.replace(/\.0+$|(\.\d*?)0+$/, "$1");
 }
 
-/** Exact GP with separators, for tooltips. */
+
 export function formatGPExact(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
   return (

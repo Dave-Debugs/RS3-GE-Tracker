@@ -11,10 +11,8 @@ from .helpers import icon_url
 router = APIRouter(prefix="/api/movers", tags=["movers"])
 
 PERIODS = {"24h": 86400, "7d": 7 * 86400}
-MIN_PRICE = 100          # ignore junk items whose 1gp swings dominate
-MIN_VOLUME_24H = 2000    # require real liquidity so manipulation spikes
-                         # on dead items don't dominate the board
-
+MIN_PRICE = 100
+MIN_VOLUME_24H = 2000
 
 @router.get("")
 async def top_movers(
@@ -48,14 +46,14 @@ async def top_movers(
                     continue
         except Exception as e:
             pass
-            
+
     past = await repo.avg_price_around(then, window=6 * 3600)
-    
+
     if len(past) < 100:
-        # Fallback to API if database is empty/missing old data
+
         client = request.app.state.client
         try:
-            # wiki API accepts closest 1h bucket timestamp
+
             bucket_ts = (then // 3600) * 3600
             _, api_data = await client.one_hour(bucket_ts)
             for iid_str, entry in api_data.items():
@@ -72,7 +70,7 @@ async def top_movers(
                 except (ValueError, TypeError):
                     continue
         except Exception as e:
-            pass # ignore and just use what we have
+            pass
 
     volume = await repo.volume_since(now - 86400)
     has_volume_data = len(volume) > 100

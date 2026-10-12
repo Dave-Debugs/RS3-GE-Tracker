@@ -1,69 +1,68 @@
-# RS3 Grand Exchange Tracker
+# RS3 Grand Exchange Tracker (v1.2)
 
-A local, lightweight market tracker and flipping toolkit for **RuneScape 3** Grand Exchange prices. It pulls live price data directly from the RuneScape Wiki API, stores up to **30 days** of history locally in SQLite, and provides an interactive dashboard with multi-item charts, flipping margin calculators, crafting recipes, and portfolio tracking.
-
----
-
-## Features
-
-- **Multi-Dashboard Item Groups** — Organize items into dedicated dashboards (e.g. *Flipping*, *Herblore*, *Boss Drops*, *High Alch*) to isolate charts and watchlists without visual clutter.
-- **Interactive Price Charts** — Zoomable charts with 1H, 6H, 24H, 7D, 14D, and 30D ranges, instant buy/sell bands, volume bars, moving averages, and normalized % change comparison.
-- **Crafting & Flipping Recipes** — Calculate real profit margins for potions, smithing, and processing with auto-populating ingredients, 2% GE tax calculations, and in-game examine tooltips with direct Wiki guides.
-- **Portfolio Tracker** — Log your held items, purchase prices, and quantities to track total portfolio value and unrealized profit in real time.
-- **Price Alerts** — Set custom price thresholds with Windows desktop notifications when targets are hit.
-- **Top Movers & Market Trends** — Discover biggest 24H and weekly gainers, losers, and highest-volume items across the entire tradeable RS3 item catalog (~7,300 items).
-- **Offline & Local First** — Everything is stored locally in SQLite (`rs3_tracker.db`). If your internet drops or the Wiki API is temporarily unreachable, your existing charts and data remain instantly viewable.
+A local desktop market tracker, flipping scanner, and alchemy calculator for **RuneScape 3** Grand Exchange prices. It pulls live price data from the RuneScape Wiki real-time prices API, stores rolling history locally in SQLite, and runs entirely on your machine.
 
 ---
 
-## Quick Start (Windows)
+## What's in v1.2
 
-### Option 1: Run the Standalone App
-Download the compiled `RS3Tracker.exe` from the [Releases](https://github.com/DaveDebugs/rs3-ge-tracker/releases) tab and double-click to run.
+- **Smart Flip Finder & 4h Limit Matrix** — Scans the tradeable RS3 item catalog for active buy/sell spreads after deducting the 2% Grand Exchange tax (capped at 50M gp per item) and ranks flips by 4-hour buy limit profit, profit per item, ROI %, or 24-hour volume.
+- **High Level Alchemy Scanner** — Automatically pulls the live Nature rune price and ranks items by net profit per alch and 4-hour buy limit profit.
+- **GE Tax & Flip Calculator** — Built-in calculator for checking break-even sell prices, 2% tax deductions, required capital, and total flip profit for any custom quantity or 4-hour limit.
+- **Item Group Dashboards** — Organize your watchlist into separate item groups (such as *Flipping*, *PvM Gear*, *Herblore*, or *High Alch*) so your charts and KPI summary cards stay focused.
+- **Interactive Price Charts** — Zoomable price and volume charts across 1H, 6H, 24H, 7D, 14D, and 30D windows with instant buy/sell bands, moving averages, and % change comparison mode.
+- **Crafting & Processing Recipes** — Track input costs and output margins for potions, smithing, and item combinations with automatic ingredient lookup and hover examine tooltips.
+- **Portfolio Tracker & Price Alerts** — Log your current holdings to track unrealized profit and set desktop notifications when items cross your target price.
+- **Built-in Auto-Updater** — Check for new releases and install updates directly from the Settings menu or the system tray icon with SHA-256 checksum verification.
+
+---
+
+## Installation (Windows)
+
+### Option 1: Windows Installer (Recommended)
+Download and run **`RS3-GE-Tracker-Setup-1.2.exe`** (or the standalone `RS3Tracker.exe`) from the [Releases](https://github.com/dave-debugs/rs3-ge-tracker/releases) page. Once launched, the app runs in your system tray and opens the dashboard in your default browser.
 
 ### Option 2: Run from Source
 
 **Prerequisites**:
-- [Python 3.11+](https://python.org) (make sure "Add to PATH" is checked)
+- [Python 3.11+](https://python.org)
 - [Node.js 18+](https://nodejs.org)
 
 ```bat
-:: 1. Install dependencies
 scripts\setup.bat
-
-:: 2. Launch backend & frontend
 scripts\start_all.bat
 ```
 
-Once running, open your browser to **http://localhost:5173**.
+Once started, open **http://localhost:5173** in your browser.
 
 ---
 
-## Manual Startup
+## Manual Development Startup
 
 ```bash
-# Terminal 1: Backend
+# Backend (Port 8000)
 cd backend
 python -m uvicorn app.main:app --port 8000
 
-# Terminal 2: Frontend
+# Frontend (Port 5173)
 cd frontend
 npm run dev
 ```
 
 ---
 
-## Testing
+## Building the Installer
 
-Run the automated backend test suite:
+To compile the frontend bundle, standalone executable, and Inno Setup installer (`v1.2`):
 
-```bash
-cd backend
-python -m pytest
+```bat
+cd frontend && npm run build
+cd ..\backend && python -m PyInstaller RS3Tracker.spec --noconfirm
+iscc ..\installer\RS3-GE-Tracker.iss
 ```
 
 ---
 
 ## Data & Attribution
 
-Price data is provided by the [RuneScape Wiki real-time prices project](https://runescape.wiki/w/RuneScape:Real-time_prices). This project is not affiliated with or endorsed by Jagex.
+Price and item data is provided by the [RuneScape Wiki Real-Time Prices API](https://runescape.wiki/w/RuneScape:Real-time_prices). Created by [dave-debugs](https://github.com/dave-debugs). This project is not affiliated with or endorsed by Jagex.

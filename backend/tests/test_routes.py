@@ -8,7 +8,6 @@ from tests.conftest import make_points
 
 NOW = int(time.time())
 
-
 class DummyScheduler:
     running = True
     next_run_at = NOW + 300
@@ -19,11 +18,10 @@ class DummyScheduler:
     def trigger_now(self):
         self.triggered = True
 
-
 @pytest.fixture
 async def api(repo, collector, client, mock_api):
-    """AsyncClient wired to the mock API + temp DB (no background tasks)."""
-    await collector.run_cycle()  # seed items/latest/1h data
+
+    await collector.run_cycle()
     app = create_app()
     scheduler = DummyScheduler()
     app.state.db = repo.db
@@ -45,11 +43,9 @@ async def api(repo, collector, client, mock_api):
         ac.scheduler = scheduler
         yield ac
 
-
 async def test_health(api):
     r = await api.get("/api/health")
     assert r.json() == {"status": "ok"}
-
 
 async def test_search_route(api):
     r = await api.get("/api/items/search", params={"q": "whip"})
@@ -58,7 +54,6 @@ async def test_search_route(api):
     assert results[0]["name"] == "Abyssal whip"
     assert results[0]["current_price"] is not None
     assert results[0]["icon_url"] == "/api/icon/4151"
-
 
 async def test_track_untrack_flow(api):
     r = await api.post("/api/tracked", json={"item_id": 4151})
@@ -70,14 +65,12 @@ async def test_track_untrack_flow(api):
     assert "trend" in tracked[0] and "change_24h" in tracked[0]
     r = await api.put("/api/tracked/4151/favorite", json={"favorite": True})
     assert r.json()["favorite"] is True
-    
-    # Test setting group
+
     r = await api.put("/api/tracked/4151/group", json={"group": "Flipping"})
     assert r.status_code == 200 and r.json()["group"] == "Flipping"
     r = await api.get("/api/tracked")
     assert r.json()["tracked"][0]["group_name"] == "Flipping"
-    
-    # Test deleting group (resets group to Default)
+
     r = await api.delete("/api/tracked/groups/Flipping")
     assert r.status_code == 200 and r.json()["items_moved_to_default"] == 1
     r = await api.get("/api/tracked")
@@ -88,14 +81,12 @@ async def test_track_untrack_flow(api):
     del_again = await api.delete("/api/tracked/4151")
     assert del_again.status_code == 404
 
-
 async def test_track_unknown_item_404(api):
     r = await api.post("/api/tracked", json={"item_id": 999999})
     assert r.status_code == 404
 
-
 async def test_prices_route_and_14day_filter(api, repo):
-    # insert data older than the 14d window; it must not appear for range=14d
+
     await repo.insert_price_rows(make_points(NOW - 60 * 86400, 3600, [1.0] * 5))
     await repo.insert_price_rows([{**p, "item_id": 4151} for p in
                                   make_points(NOW - 60 * 86400, 3600, [1.0] * 5)])
@@ -104,10 +95,9 @@ async def test_prices_route_and_14day_filter(api, repo):
     points = r.json()["points"]
     assert points
     assert all(p["timestamp"] >= NOW - 14 * 86400 - 60 for p in points)
-    # bad range rejected
+
     bad = await api.get("/api/prices/4151", params={"range": "90d"})
     assert bad.status_code == 422
-
 
 async def test_prices_moving_averages(api):
     r = await api.get("/api/prices/4151", params={"range": "24h", "ma": "1h,24h"})
@@ -115,7 +105,6 @@ async def test_prices_moving_averages(api):
     assert set(body["moving_averages"].keys()) == {"1h", "24h"}
     bad = await api.get("/api/prices/4151", params={"range": "24h", "ma": "3d"})
     assert bad.status_code == 422
-
 
 async def test_stats_and_trends_routes(api):
     await api.post("/api/tracked", json={"item_id": 4151})
@@ -129,7 +118,6 @@ async def test_stats_and_trends_routes(api):
     assert r.json()["classification"] in {
         "Strongly Rising", "Rising", "Neutral", "Falling", "Strongly Falling"}
 
-
 async def test_movers_route(api):
     r = await api.get("/api/movers", params={"period": "24h"})
     assert r.status_code == 200
@@ -137,7 +125,6 @@ async def test_movers_route(api):
     assert {"gainers", "losers", "highest_volume"} <= set(body.keys())
     bad = await api.get("/api/movers", params={"period": "1y"})
     assert bad.status_code == 422
-
 
 async def test_settings_roundtrip(api):
     r = await api.get("/api/settings")
@@ -151,7 +138,6 @@ async def test_settings_roundtrip(api):
     empty = await api.put("/api/settings", json={})
     assert empty.status_code == 422
 
-
 async def test_status_route(api):
     r = await api.get("/api/status")
     body = r.json()
@@ -159,7 +145,6 @@ async def test_status_route(api):
     assert body["collector_running"] is True
     assert body["database_records"] > 0
     assert body["item_count"] == 4
-
 
 async def test_export_csv_and_json(api):
     await api.post("/api/tracked", json={"item_id": 4151})
@@ -173,7 +158,6 @@ async def test_export_csv_and_json(api):
     assert body["item_name"] == "Abyssal whip"
     bad = await api.get("/api/export/4151", params={"format": "xml"})
     assert bad.status_code == 422
-
 
 async def test_alerts_routes(api):
     r = await api.get("/api/alerts")
@@ -190,7 +174,6 @@ async def test_alerts_routes(api):
     del_r = await api.delete(f"/api/alerts/{alert_id}")
     assert del_r.status_code == 200
 
-
 async def test_portfolio_routes(api):
     r = await api.get("/api/portfolio")
     assert r.status_code == 200
@@ -203,7 +186,6 @@ async def test_portfolio_routes(api):
     assert r2.json()["total_cost"] == 350000
     del_r = await api.delete(f"/api/portfolio/{port_id}")
     assert del_r.status_code == 200
-
 
 async def test_recipes_routes(api):
     r = await api.get("/api/recipes")
@@ -221,3 +203,26 @@ async def test_recipes_routes(api):
     assert len(r2.json()["recipes"]) == 1
     del_r = await api.delete(f"/api/recipes/{rec_id}")
     assert del_r.status_code == 200
+
+async def test_scanner_routes(api):
+    flips_r = await api.get("/api/scanner/flips", params={"min_price": 100, "sort_by": "limit_profit"})
+    assert flips_r.status_code == 200
+    data = flips_r.json()
+    assert "items" in data and "count" in data
+    assert data["count"] >= 1
+    whip = next((i for i in data["items"] if i["item_id"] == 4151), None)
+    assert whip is not None
+    assert whip["net_profit"] > 0
+    assert whip["limit_profit_4h"] == whip["net_profit"] * whip["buy_limit"]
+
+    alch_r = await api.get("/api/scanner/alch", params={"sort_by": "limit_profit"})
+    assert alch_r.status_code == 200
+    alch_data = alch_r.json()
+    assert "nature_rune_price" in alch_data
+    assert isinstance(alch_data["items"], list)
+
+async def test_updater_routes(api):
+    bad_apply = await api.post("/api/updater/apply", json={"download_url": "http://evil.example.com/setup.exe"})
+    assert bad_apply.status_code == 400
+    assert "Untrusted" in bad_apply.json()["detail"]
+

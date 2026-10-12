@@ -56,7 +56,6 @@ export default function PriceChart({
     });
     ro.observe(ref.current);
 
-    // Initial resize trigger to guarantee full canvas dimension
     const t = setTimeout(() => {
       chartRef.current?.resize();
     }, 50);
@@ -76,7 +75,6 @@ export default function PriceChart({
 
   return (
     <div className="chart-wrapper" style={{ display: "flex", flexDirection: "column", gap: "8px", position: "relative" }}>
-      {/* HTML Interactive Legend Chips */}
       {hasData && series.length > 1 && (
         <div className="chart-legend-chips">
           {series.map((s, i) => {

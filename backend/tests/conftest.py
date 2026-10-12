@@ -13,16 +13,13 @@ from app.db.repository import Repository
 
 NOW = int(time.time())
 
-
 def bucket(ts: int, size: int) -> int:
     return ts // size * size
 
-
 class MockAPI:
-    """Mock transport simulating the RS3 prices API (see docs/API.md)."""
 
     def __init__(self):
-        self.fail_with: int | None = None   # HTTP status to force
+        self.fail_with: int | None = None
         self.bad_json = False
         self.calls: list[str] = []
         self.mapping = [
@@ -92,11 +89,9 @@ class MockAPI:
             return httpx.Response(200, json={"data": points})
         return httpx.Response(404, text="not found")
 
-
 @pytest.fixture
 def mock_api() -> MockAPI:
     return MockAPI()
-
 
 @pytest.fixture
 async def client(mock_api) -> RS3PriceClient:
@@ -106,7 +101,6 @@ async def client(mock_api) -> RS3PriceClient:
     yield c
     await c.close()
 
-
 @pytest.fixture
 async def db(tmp_path) -> Database:
     d = Database(tmp_path / "test.db")
@@ -114,16 +108,13 @@ async def db(tmp_path) -> Database:
     yield d
     await d.close()
 
-
 @pytest.fixture
 def repo(db) -> Repository:
     return Repository(db)
 
-
 @pytest.fixture
 def collector(repo, client) -> Collector:
     return Collector(repo, client)
-
 
 def make_points(start: int, step: int, prices: list[float],
                 volume: int = 10, item_id: int = 0) -> list[dict]:

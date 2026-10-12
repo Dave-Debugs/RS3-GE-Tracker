@@ -1,12 +1,23 @@
-# -*- mode: python ; coding: utf-8 -*-
-
-
 a = Analysis(
     ['run_app.py'],
     pathex=[],
     binaries=[],
     datas=[('..\\frontend\\dist', 'frontend\\dist'), ('..\\icon.ico', '.')],
-    hiddenimports=['win11toast', 'winrt'],
+    hiddenimports=[
+        'win11toast',
+        'winrt',
+        'aiosqlite',
+        'uvicorn.logging',
+        'uvicorn.loops',
+        'uvicorn.loops.auto',
+        'uvicorn.protocols',
+        'uvicorn.protocols.http',
+        'uvicorn.protocols.http.auto',
+        'uvicorn.protocols.websockets',
+        'uvicorn.protocols.websockets.auto',
+        'uvicorn.lifespan',
+        'uvicorn.lifespan.on',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -23,6 +34,7 @@ exe = EXE(
     a.datas,
     [],
     name='RS3Tracker',
+    icon='..\\icon.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
