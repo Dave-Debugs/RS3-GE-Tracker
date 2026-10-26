@@ -196,7 +196,7 @@ export default function TrackedList({
                 <div style={{ overflowX: "auto" }}>
                   <table className="table" style={{ width: "100%", textAlign: "left", borderCollapse: "collapse", fontSize: "0.9em" }}>
                     <thead>
-                      <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                      <tr style={{ borderBottom: "1px solid var(--card-border)" }}>
                         <th style={{ width: "36px" }}>Chart</th>
                         <th style={{ cursor: "pointer" }} onClick={() => handleSort("name")}>
                           Item {renderSortIndicator("name")}
@@ -231,7 +231,7 @@ export default function TrackedList({
                           <tr
                             key={item.item_id}
                             style={{
-                              borderBottom: "1px solid var(--border)",
+                              borderBottom: "1px solid var(--card-border)",
                               background: focusedId === item.item_id ? "var(--accent-soft)" : "transparent",
                               cursor: "pointer",
                             }}

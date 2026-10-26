@@ -54,7 +54,7 @@ def check_updates_tray(icon=None, item=None):
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
             if not data.get("update_available"):
-                cur = data.get("current_version", "1.2.0")
+                cur = data.get("current_version", "1.3.0")
                 _msgbox(
                     f"You are running the latest version of RS3 GE Tracker (v{cur}).",
                     "No Updates Available",
@@ -128,7 +128,7 @@ if __name__ == "__main__":
         icon = pystray.Icon(
             "RS3 GE Tracker",
             image,
-            "RS3 GE Tracker v1.2",
+            "RS3 GE Tracker v1.3",
             menu=pystray.Menu(
                 pystray.MenuItem("Open in Browser", open_browser, default=True),
                 pystray.MenuItem("Check for Updates...", check_updates_tray),

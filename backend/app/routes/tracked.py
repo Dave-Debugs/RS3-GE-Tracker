@@ -5,7 +5,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..db.repository import Repository
+from ..db.repository import Repository, compute_ge_tax
 from ..deps import get_repo, get_scheduler
 from ..services.analytics import analyze_trend, merge_sources, pct_change, price_at_or_before
 from .helpers import icon_url
@@ -26,11 +26,13 @@ class GroupRequest(BaseModel):
 async def list_tracked(repo: Repository = Depends(get_repo)) -> dict:
     now = int(time.time())
     tracked = await repo.tracked()
-    latest = await repo.get_latest([t["item_id"] for t in tracked])
+    item_ids = [t["item_id"] for t in tracked]
+    latest = await repo.get_latest(item_ids)
+    history_map = await repo.get_price_history_batch(item_ids, now - 7 * 86400 - 12 * 3600, now)
     out = []
     for t in tracked:
         iid = t["item_id"]
-        points = merge_sources(await repo.get_price_history(iid, now - 7 * 86400))
+        points = merge_sources(history_map.get(iid, []))
         lp = latest.get(iid)
         current = None
         updated = None
@@ -56,7 +58,7 @@ async def list_tracked(repo: Repository = Depends(get_repo)) -> dict:
         buy_limit = t.get("buy_limit")
         if buy_price and sell_price:
             margin = buy_price - sell_price
-            tax = int(min(buy_price * 0.02, 50000000)) if buy_price >= 50 else 0
+            tax = compute_ge_tax(buy_price)
             net_profit = margin - tax
             if sell_price > 0:
                 roi_pct = round((net_profit / sell_price) * 100, 2)
@@ -81,7 +83,11 @@ async def list_tracked(repo: Repository = Depends(get_repo)) -> dict:
             "roi_pct": roi_pct,
             "limit_profit_4h": limit_profit_4h,
             "change_24h": pct_change(price_at_or_before(points, now - 86400), current),
-            "change_7d": pct_change(price_at_or_before(points, now - 7 * 86400), current),
+            "change_7d": pct_change(
+                price_at_or_before(points, now - 7 * 86400)
+                or (points[0].get("average_price") if points else None),
+                current,
+            ),
             "trend": trend.classification,
             "volume_24h": int(vol_24h),
             "last_updated": updated,

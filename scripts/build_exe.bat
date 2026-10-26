@@ -7,7 +7,7 @@ python -m PyInstaller RS3Tracker.spec --noconfirm
 
 cd /d "%~dp0.."
 if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" (
-    "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" installer.iss
+    "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" installer\RS3-GE-Tracker.iss
 ) else (
-    iscc installer.iss
+    iscc installer\RS3-GE-Tracker.iss
 )

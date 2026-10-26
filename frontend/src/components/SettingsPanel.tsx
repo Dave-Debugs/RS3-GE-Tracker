@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { Settings, StatusInfo, UpdateCheckResult } from "../types";
 import { formatTime } from "../lib/format";
+import { useToast } from "../context/ToastContext";
 
 interface Props {
   open: boolean;
@@ -11,8 +13,13 @@ interface Props {
 }
 
 export default function SettingsPanel({ open, status, onClose, onSaved }: Props) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [settings, setSettings] = useState<Settings | null>(null);
   const [saving, setSaving] = useState(false);
+  const [testingWebhook, setTestingWebhook] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [applyingUpdate, setApplyingUpdate] = useState(false);
@@ -75,6 +82,57 @@ export default function SettingsPanel({ open, status, onClose, onSaved }: Props)
     }
   };
 
+  const handleTestWebhook = async () => {
+    if (!settings?.discord_webhook_url) {
+      toast.error("Please enter a Discord Webhook URL first.");
+      return;
+    }
+    setTestingWebhook(true);
+    setError(null);
+    try {
+      await api.testWebhook(settings.discord_webhook_url);
+      toast.success("Sent test alert to Discord!");
+    } catch (e: any) {
+      setError(`Webhook test failed: ${e.message || e}`);
+    } finally {
+      setTestingWebhook(false);
+    }
+  };
+
+  const handleExportWorkspace = async () => {
+    try {
+      const data = await api.exportWorkspace();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `rs3_ge_tracker_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Exported workspace backup JSON!");
+    } catch (e: any) {
+      toast.error(`Export failed: ${e.message || e}`);
+    }
+  };
+
+  const handleImportWorkspaceFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const res = await api.importWorkspace(payload);
+      qc.invalidateQueries();
+      toast.success(
+        `Restored workspace (${res.restored.tracked_items || 0} tracked, ${res.restored.portfolio || 0} holdings, ${res.restored.recipes || 0} recipes)!`
+      );
+    } catch (err: any) {
+      toast.error(`Failed to import backup: ${err.message || err}`);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const save = async () => {
     if (!settings) return;
     setSaving(true);
@@ -87,6 +145,7 @@ export default function SettingsPanel({ open, status, onClose, onSaved }: Props)
         show_item_tooltips: settings.show_item_tooltips || "true",
         user_agent: settings.user_agent,
         collector_autostart: settings.collector_autostart,
+        discord_webhook_url: settings.discord_webhook_url ?? "",
       });
       onSaved(saved);
       onClose();
@@ -99,9 +158,9 @@ export default function SettingsPanel({ open, status, onClose, onSaved }: Props)
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+      <div className="modal" style={{ maxWidth: "620px" }}>
         <div className="card-head">
-          <h2>Settings</h2>
+          <h2>Settings &amp; Backup</h2>
           <button className="icon-btn" onClick={onClose}>✕</button>
         </div>
         {error && <p className="error-text">{error}</p>}
@@ -121,8 +180,10 @@ export default function SettingsPanel({ open, status, onClose, onSaved }: Props)
             <label>
               <span>Theme</span>
               <select value={settings.theme} onChange={(e) => update({ theme: e.target.value })}>
-                <option value="dark">Dark</option>
-                <option value="light">Light</option>
+                <option value="dark">Grand Exchange Gold (Dark)</option>
+                <option value="nox">Noxious Abyss (Dark Green)</option>
+                <option value="prif">Prifddinas Crystal (Dark Blue)</option>
+                <option value="light">GE Parchment (Light)</option>
               </select>
             </label>
             <label>
@@ -131,7 +192,7 @@ export default function SettingsPanel({ open, status, onClose, onSaved }: Props)
                 value={settings.default_chart_range}
                 onChange={(e) => update({ default_chart_range: e.target.value })}
               >
-                {["1h", "6h", "24h", "7d", "14d", "30d"].map((r) => (
+                {["1h", "6h", "24h", "7d", "14d", "30d", "90d", "6m", "1y"].map((r) => (
                   <option key={r} value={r}>{r.toUpperCase()}</option>
                 ))}
               </select>
@@ -142,7 +203,7 @@ export default function SettingsPanel({ open, status, onClose, onSaved }: Props)
                 value={settings.show_item_tooltips ?? "true"}
                 onChange={(e) => update({ show_item_tooltips: e.target.value })}
               >
-                <option value="true">Enabled (Hover on ingredients)</option>
+                <option value="true">Enabled (Hover on items)</option>
                 <option value="false">Disabled</option>
               </select>
             </label>
@@ -157,6 +218,25 @@ export default function SettingsPanel({ open, status, onClose, onSaved }: Props)
               </select>
             </label>
             <label className="full">
+              <span>Discord Webhook URL <em>(optional — sends price alerts &amp; 4h GE limit resets to Discord)</em></span>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <input
+                  style={{ flex: 1 }}
+                  placeholder="https://discord.com/api/webhooks/..."
+                  value={settings.discord_webhook_url ?? ""}
+                  onChange={(e) => update({ discord_webhook_url: e.target.value })}
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={handleTestWebhook}
+                  disabled={testingWebhook || !settings.discord_webhook_url}
+                >
+                  {testingWebhook ? "Testing…" : "Test Webhook"}
+                </button>
+              </div>
+            </label>
+            <label className="full">
               <span>API User-Agent <em>(must stay descriptive — the wiki blocks generic agents)</em></span>
               <input
                 value={settings.user_agent}
@@ -167,9 +247,38 @@ export default function SettingsPanel({ open, status, onClose, onSaved }: Props)
               <span>Database location</span>
               <input value={settings.database_path} readOnly className="readonly" />
             </label>
-            <div className="full" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "8px 0" }}>
+
+            <div className="full" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "8px 0", borderTop: "1px solid var(--card-border)" }}>
               <div>
-                <div style={{ fontWeight: 600, fontSize: "13px" }}>Application Version: v1.2.0</div>
+                <div style={{ fontWeight: 600, fontSize: "13px" }}>Workspace Backup &amp; Restore</div>
+                <div className="muted" style={{ fontSize: "11.5px" }}>
+                  Export or restore your watchlist, groups, portfolio, flip history, 8 GE slots, recipes &amp; alerts
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button type="button" className="btn btn-ghost" onClick={handleExportWorkspace}>
+                  Export Backup ⭳
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Import Backup ⭱
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  style={{ display: "none" }}
+                  onChange={handleImportWorkspaceFile}
+                />
+              </div>
+            </div>
+
+            <div className="full" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "8px 0", borderTop: "1px solid var(--card-border)" }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: "13px" }}>Application Version: v1.3.0</div>
                 {updateMessage && (
                   <div className="muted" style={{ fontSize: "12px", marginTop: "4px" }}>
                     {updateMessage}

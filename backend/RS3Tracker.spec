@@ -2,7 +2,11 @@ a = Analysis(
     ['run_app.py'],
     pathex=[],
     binaries=[],
-    datas=[('..\\frontend\\dist', 'frontend\\dist'), ('..\\icon.ico', '.')],
+    datas=[
+        ('..\\frontend\\dist', 'frontend\\dist'),
+        ('..\\frontend\\src\\recipes.json', 'frontend\\src'),
+        ('..\\icon.ico', '.'),
+    ],
     hiddenimports=[
         'win11toast',
         'winrt',

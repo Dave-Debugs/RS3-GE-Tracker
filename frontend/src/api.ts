@@ -22,7 +22,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       const body = await resp.json();
       detail = body.detail ?? detail;
     } catch {
-
+      // ignore
     }
     throw new Error(detail);
   }
@@ -65,6 +65,17 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(patch),
     }),
+  testWebhook: (discord_webhook_url: string) =>
+    request<{ ok: boolean }>("/api/settings/test-webhook", {
+      method: "POST",
+      body: JSON.stringify({ discord_webhook_url }),
+    }),
+  exportWorkspace: () => request<Record<string, any>>("/api/backup/export"),
+  importWorkspace: (payload: Record<string, any>) =>
+    request<{ status: string; restored: Record<string, number> }>("/api/backup/import", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   collectNow: () => request("/api/status/collect-now", { method: "POST" }),
   exportUrl: (item_id: number, format: "csv" | "json", range: ChartRange) =>
     `/api/export/${item_id}?format=${format}&range=${range}`,
@@ -82,4 +93,3 @@ export const api = {
       }
     ),
 };
-

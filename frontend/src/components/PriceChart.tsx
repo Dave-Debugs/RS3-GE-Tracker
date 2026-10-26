@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as echarts from "echarts";
-import type { ChartMode, PriceSeries } from "../types";
+import type { Alert, ChartMode, PortfolioItem, PriceSeries } from "../types";
 import { formatDateTime, formatGP, formatGPExact, formatPct } from "../lib/format";
 
 const PALETTE = [
@@ -13,8 +13,11 @@ interface Props {
   mode: ChartMode;
   showVolume: boolean;
   showHighLow: boolean;
+  showBollinger?: boolean;
   maKeys: string[];
   dark: boolean;
+  alerts?: Alert[];
+  portfolioItems?: PortfolioItem[];
   onToggleItem?: (itemId: number) => void;
   onFocusItem?: (itemId: number) => void;
 }
@@ -24,8 +27,11 @@ export default function PriceChart({
   mode,
   showVolume,
   showHighLow,
+  showBollinger = false,
   maKeys,
   dark,
+  alerts = [],
+  portfolioItems = [],
   onToggleItem,
   onFocusItem,
 }: Props) {
@@ -35,8 +41,18 @@ export default function PriceChart({
   const hasData = series.length > 0 && series.some((s) => s.points && s.points.length > 0);
 
   const option = useMemo(() => {
-    return buildOption(series, mode, showVolume, showHighLow, maKeys, dark);
-  }, [series, mode, showVolume, showHighLow, maKeys, dark]);
+    return buildOption(
+      series,
+      mode,
+      showVolume,
+      showHighLow,
+      showBollinger,
+      maKeys,
+      dark,
+      alerts,
+      portfolioItems
+    );
+  }, [series, mode, showVolume, showHighLow, showBollinger, maKeys, dark, alerts, portfolioItems]);
 
   useEffect(() => {
     if (!ref.current) return;
@@ -128,8 +144,11 @@ function buildOption(
   mode: ChartMode,
   showVolume: boolean,
   showHighLow: boolean,
+  showBollinger: boolean,
   maKeys: string[],
-  dark: boolean
+  dark: boolean,
+  alerts: Alert[],
+  portfolioItems: PortfolioItem[]
 ): echarts.EChartsOption {
   const fg = dark ? "#c9cdd6" : "#2d3138";
   const grid = dark ? "#2a2f3a" : "#e2e5ea";
@@ -154,6 +173,76 @@ function buildOption(
   seriesData.forEach((s, i) => {
     if (!s.points || !s.points.length) return;
     const color = PALETTE[i % PALETTE.length];
+
+    const markLines: any[] = [];
+    if (single && mode === "price") {
+      if (showBollinger && s.vwap && s.vwap > 0) {
+        markLines.push({
+          yAxis: s.vwap,
+          name: `VWAP (${formatGP(s.vwap)})`,
+          lineStyle: { color: "#c678dd", type: "dashed", width: 1.4 },
+          label: {
+            formatter: `VWAP: ${formatGP(s.vwap)}`,
+            color: "#c678dd",
+            fontSize: 10,
+            position: "insideStartBottom",
+          },
+        });
+      }
+
+      const itemPortfolioLots = portfolioItems.filter((p) => p.item_id === s.item_id);
+      if (itemPortfolioLots.length > 0) {
+        const totalQty = itemPortfolioLots.reduce((acc, p) => acc + p.quantity, 0);
+        const totalCost = itemPortfolioLots.reduce((acc, p) => acc + p.quantity * p.buy_price_per_item, 0);
+        const avgBuy = totalQty > 0 ? Math.round(totalCost / totalQty) : 0;
+        if (avgBuy > 0) {
+          const breakEven = avgBuy >= 50 ? Math.ceil(avgBuy / 0.98) : avgBuy;
+          markLines.push({
+            yAxis: avgBuy,
+            name: `Portfolio Buy (${formatGP(avgBuy)})`,
+            lineStyle: { color: "#61afef", type: "dashed", width: 1.5 },
+            label: {
+              formatter: `Avg Buy: ${formatGP(avgBuy)}`,
+              color: "#61afef",
+              fontSize: 10,
+              position: "insideEndTop",
+            },
+          });
+          markLines.push({
+            yAxis: breakEven,
+            name: `Break-Even +2% Tax (${formatGP(breakEven)})`,
+            lineStyle: { color: "#e8b64c", type: "dotted", width: 1.5 },
+            label: {
+              formatter: `Break-Even (2% Tax): ${formatGP(breakEven)}`,
+              color: "#e8b64c",
+              fontSize: 10,
+              position: "insideEndBottom",
+            },
+          });
+        }
+      }
+
+      const itemAlerts = alerts.filter(
+        (a) =>
+          a.item_id === s.item_id &&
+          a.active &&
+          (!a.metric || a.metric === "either" || a.metric === "high" || a.metric === "low")
+      );
+      for (const al of itemAlerts) {
+        markLines.push({
+          yAxis: al.threshold_price,
+          name: `Alert ${al.condition} ${formatGP(al.threshold_price)}`,
+          lineStyle: { color: "#e06c75", type: "dashed", width: 1.2 },
+          label: {
+            formatter: `🔔 Alert ${al.condition} ${formatGP(al.threshold_price)}`,
+            color: "#e06c75",
+            fontSize: 10,
+            position: "insideStartTop",
+          },
+        });
+      }
+    }
+
     out.push({
       name: s.name,
       type: "line",
@@ -167,6 +256,14 @@ function buildOption(
       areaStyle:
         single && mode === "price"
           ? { opacity: 0.12, color }
+          : undefined,
+      markLine:
+        markLines.length > 0
+          ? {
+              symbol: ["none", "none"],
+              silent: true,
+              data: markLines,
+            }
           : undefined,
       data: s.points
         .filter((p) => p && p.timestamp)
@@ -195,6 +292,27 @@ function buildOption(
         data: s.points
           .filter((p) => p && p.timestamp)
           .map((p) => [p.timestamp * 1000, p.low_price]),
+      });
+    }
+
+    if (single && showBollinger && mode === "price" && s.bollinger_bands && s.bollinger_bands.length > 0) {
+      out.push({
+        name: "Bollinger Upper (+2σ)",
+        type: "line",
+        showSymbol: false,
+        connectNulls: true,
+        lineStyle: { width: 1.2, type: "dotted", color: "#56b6c2", opacity: 0.85 },
+        itemStyle: { color: "#56b6c2" },
+        data: s.bollinger_bands.map((b) => [b.timestamp * 1000, b.upper]),
+      });
+      out.push({
+        name: "Bollinger Lower (-2σ)",
+        type: "line",
+        showSymbol: false,
+        connectNulls: true,
+        lineStyle: { width: 1.2, type: "dotted", color: "#56b6c2", opacity: 0.85 },
+        itemStyle: { color: "#56b6c2" },
+        data: s.bollinger_bands.map((b) => [b.timestamp * 1000, b.lower]),
       });
     }
 
@@ -261,7 +379,7 @@ function buildOption(
           const text =
             p.seriesName === "Volume"
               ? Math.round(v).toLocaleString() + " traded"
-              : mode === "percent" && !p.seriesName.startsWith("Instant")
+              : mode === "percent" && !p.seriesName.startsWith("Instant") && !p.seriesName.startsWith("Bollinger")
               ? formatPct(v)
               : formatGPExact(v);
           html += `${p.marker} ${p.seriesName}: <b>${text}</b><br/>`;

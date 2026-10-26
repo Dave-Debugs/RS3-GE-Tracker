@@ -1,13 +1,8 @@
-"""Standalone collector — keeps collecting prices while the dashboard is
-closed. Safe to run alongside the backend (SQLite WAL + idempotent inserts),
-but normally you run EITHER this OR the backend, not both.
-
-Usage:  python scripts/run_collector.py   (from the project root)
-"""
+"""Standalone background price collector."""
 from __future__ import annotations
 
+import asyncio
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
@@ -20,25 +15,31 @@ from app.db.repository import Repository  # noqa: E402
 from app.logging_config import setup_logging  # noqa: E402
 
 
-def main() -> None:
+async def run() -> None:
     setup_logging()
     db = Database(DATABASE_PATH)
+    await db.init_db()
     repo = Repository(db)
-    settings = repo.get_settings(DEFAULT_SETTINGS)
+    settings = await repo.get_settings(DEFAULT_SETTINGS)
     client = RS3PriceClient(user_agent=settings["user_agent"])
     collector = Collector(repo, client)
     print(f"Collector running against {DATABASE_PATH}. Ctrl+C to stop.")
     try:
         while True:
-            collector.run_cycle()
-            settings = repo.get_settings(DEFAULT_SETTINGS)
+            await collector.run_cycle()
+            settings = await repo.get_settings(DEFAULT_SETTINGS)
             interval = max(1, int(settings.get("update_interval_minutes", "5"))) * 60
-            time.sleep(interval)
+            await asyncio.sleep(interval)
+    finally:
+        await client.close()
+        await db.close()
+
+
+def main() -> None:
+    try:
+        asyncio.run(run())
     except KeyboardInterrupt:
         print("Collector stopped.")
-    finally:
-        client.close()
-        db.close()
 
 
 if __name__ == "__main__":

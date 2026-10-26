@@ -195,11 +195,11 @@ async def download_and_apply_update(
 
         subprocess.Popen(args, cwd=str(update_dir))
 
-        if getattr(sys, "frozen", False):
-            os._exit(0)
-
         return {
+            "ok": True,
+            "applied": bool(getattr(sys, "frozen", False)),
             "started": True,
+            "message": "Installer launched! RS3 GE Tracker will now update.",
             "installer_path": str(installer_path),
             "sha256": actual_hash,
         }

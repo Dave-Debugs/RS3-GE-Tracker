@@ -1,376 +1,115 @@
 # Backend REST API Reference
 
-The local FastAPI backend serves everything under `http://localhost:8000/api`.
-Interactive Swagger docs are always available at
-[http://localhost:8000/docs](http://localhost:8000/docs) — this page is the
-stable reference with real examples. (For the *upstream* RuneScape Wiki API
-the app consumes, see [API.md](API.md).)
+The local FastAPI backend serves endpoints under `http://localhost:8000/api`. Interactive OpenAPI documentation is available at `http://localhost:8000/docs`.
 
-All responses are JSON unless noted. There is no authentication — the server
-binds to localhost and is intended for local use only. Timestamps are Unix
-seconds (UTC). All example responses below were captured from a running
-instance.
+## Conventions
 
-## Conventions and errors
-
-Validation failures return `422` and unknown items return `404`, both shaped
-like FastAPI's standard error body:
-
-```json
-{ "detail": "Unknown item id 999999" }
-```
-
-| Status | Meaning |
-|---|---|
-| 200 / 201 | success |
-| 404 | unknown `item_id`, or item not tracked |
-| 422 | invalid parameter (bad range, period, interval, format…) |
-| 500 | unexpected server error (check `logs/rs3_tracker.log`) |
-
-`range` parameters accept exactly `24h`, `7d`, `14d`, `14d`.
+- All responses are JSON unless otherwise noted (such as `/api/icon/{item_id}` and `/api/export/{item_id}`).
+- Timestamps are UTC Unix seconds.
+- `range` parameters accept `1h`, `6h`, `24h`, `7d`, `14d`, `30d`, `90d`, `6m`, and `1y`.
 
 ---
 
-## Health and status
+## Health & Status
 
 ### `GET /api/health`
-
-Liveness probe. → `{ "status": "ok" }`
+Returns `{ "status": "ok" }`.
 
 ### `GET /api/status`
-
-Dashboard header data: API/collector state, sync times, database counters.
+Returns collector health, sync timestamps, and database row counts:
 
 ```json
 {
   "api_online": true,
   "collector_running": true,
-  "last_update": 1786251349,
-  "next_update": 1786251648,
+  "last_update": 1700001349,
+  "next_update": 1700001648,
   "last_run_ok": true,
   "last_run_error": null,
   "tracked_items": 6,
   "database_records": 67692,
-  "data_coverage_days": 16.7,
+  "data_coverage_days": 30.0,
   "item_count": 7310,
-  "server_time": 1786251448
+  "server_time": 1700001448
 }
 ```
-
-`api_online` means the most recent collection cycle succeeded within the last
-2 hours. When `false`, the UI shows its "displaying cached data" banner —
-every read endpoint keeps working from the local database.
 
 ### `POST /api/status/collect-now`
-
-Wakes the collector immediately (also used internally after tracking an
-item). → `{ "triggered": true }`, or
-`{ "triggered": false, "reason": "collector not running" }`.
+Triggers an immediate background collection cycle.
 
 ---
 
-## Items and search
+## Items & Search
 
 ### `GET /api/items/search?q={query}&limit={n}`
-
-Search by partial name, exact name, item ID, or fuzzy match (typo-tolerant),
-in that ranking order. `limit` defaults to 25, max 100. Empty/short queries
-return an empty result set rather than an error.
-
-`GET /api/items/search?q=whip&limit=2`:
-
-```json
-{
-  "query": "whip",
-  "results": [
-    {
-      "item_id": 21369,
-      "name": "Whip vine",
-      "description": "Use on an abyssal whip for added oomph!",
-      "members": true,
-      "icon_url": "/api/icon/21369",
-      "buy_limit": 1,
-      "current_price": 225000
-    },
-    {
-      "item_id": 4151,
-      "name": "Abyssal whip",
-      "description": "A weapon from the Abyss.",
-      "members": true,
-      "icon_url": "/api/icon/4151",
-      "buy_limit": 10,
-      "current_price": 71978
-    }
-  ]
-}
-```
-
-`current_price` is the midpoint of the latest instant buy/sell, `null` if the
-item hasn't traded recently.
+Searches the item catalog by exact name, item ID, prefix, substring, or typo-tolerant fuzzy match.
 
 ### `GET /api/items/{item_id}`
-
-Single item summary (same shape as a search result, minus `current_price`).
-`404` if the ID is unknown.
+Returns metadata for a single item (`404` if unknown).
 
 ### `GET /api/icon/{item_id}`
-
-The item's icon as `image/png`, proxied from the wiki once and cached on disk
-(`database/icon_cache/`). Always returns an image — a transparent 1×1 PNG if
-the icon can't be fetched — so `<img>` tags never break.
+Proxies and caches the item's PNG icon in `database/icon_cache/`.
 
 ---
 
-## Tracked items
+## Tracked Watchlist
 
 ### `GET /api/tracked`
+Returns all tracked items with live buy/sell quotes, net profit after the 2% GE tax, 4h limit profit, 24h/7d percentage changes, and trend classification.
 
-The watchlist with per-item live stats, sorted favorites-first then by name.
-
-```json
-{
-  "tracked": [
-    {
-      "item_id": 4151,
-      "name": "Abyssal whip",
-      "icon_url": "/api/icon/4151",
-      "members": true,
-      "favorite": false,
-      "current_price": 71978,
-      "change_24h": -5.58,
-      "change_7d": -3.73,
-      "change_7d": -7.72,
-      "trend": "Neutral",
-      "volume_24h": 1337,
-      "last_updated": 1786251005,
-      "backfilled": true
-    }
-  ]
-}
-```
-
-`backfilled: false` means history seeding is still pending (it completes on
-the next collector kick, typically within seconds of tracking). Change fields
-are percentages and may be `null` when there is no reference price that far
-back.
-
-### `POST /api/tracked` — body `{ "item_id": 4151 }`
-
-Starts tracking. Returns `201` with `{ "item_id": 4151, "added": true }`
-(`"added": false` if it was already tracked — idempotent). Triggers an
-immediate collection cycle so backfill starts right away. `404` for unknown
-IDs.
+### `POST /api/tracked`
+Body: `{ "item_id": 4151 }`. Adds an item to the watchlist and triggers historical backfill.
 
 ### `DELETE /api/tracked/{item_id}`
+Removes an item from the watchlist.
 
-Stops tracking. → `{ "item_id": 4151, "removed": true }`; `404` if not
-tracked. Collected history rows are kept until retention ages them out.
+### `PUT /api/tracked/{item_id}/favorite`
+Body: `{ "favorite": true }`. Pins or unpins a tracked item.
 
-### `PUT /api/tracked/{item_id}/favorite` — body `{ "favorite": true }`
-
-Pins the item to the top of the list. `404` if not tracked.
+### `PUT /api/tracked/{item_id}/group`
+Body: `{ "group_name": "PvM Gear" }`. Assigns a tracked item to a custom group.
 
 ---
 
-## Prices and charts
+## Prices, Statistics & Trends
 
 ### `GET /api/prices/{item_id}?range={range}&ma={list}`
-
-The chart series. Sources are merged (finest resolution wins per timestamp)
-and downsampled to ≤ ~1,100 points. `ma` is an optional comma list from
-`1h`, `6h`, `24h`, `7d`; each requested moving average comes back as its own
-series, computed over full history so the first charted points already have
-context.
-
-`GET /api/prices/4151?range=24h&ma=1h` (truncated):
-
-```json
-{
-  "item_id": 4151,
-  "name": "Abyssal whip",
-  "range": "24h",
-  "points": [
-    {
-      "timestamp": 1786165200,
-      "high_price": 78682.6,
-      "low_price": 75000.0,
-      "average_price": 76841.3,
-      "volume": 9
-    },
-    {
-      "timestamp": 1786165500,
-      "high_price": 74471.0,
-      "low_price": null,
-      "average_price": 74471.0,
-      "volume": 1
-    }
-  ],
-  "moving_averages": {
-    "1h": [
-      { "timestamp": 1786165200, "value": 76946.54 },
-      { "timestamp": 1786165500, "value": 75849.27 }
-    ]
-  }
-}
-```
-
-`high_price`/`low_price` are the average instant-buy/instant-sell for the
-bucket; either can be `null` when only one side traded (then
-`average_price` equals the side that exists). `422` for a bad `range` or an
-unknown `ma` key.
-
----
-
-## Statistics and trends
+Returns merged, LTTB-downsampled price points, optional moving averages (`1h`, `6h`, `24h`, `7d`), Bollinger Bands (`±2σ`), VWAP, and Z-score price/volume anomalies. Automatically backfills long ranges (`90d`, `6m`, `1y`) on demand.
 
 ### `GET /api/stats/{item_id}`
-
-Descriptive statistics over the item's recorded 14-day window.
-
-```json
-{
-  "item_id": 4151,
-  "current_price": 70352.0,
-  "change_24h": -7.72,
-  "change_7d": -5.9,
-  "change_7d": -9.8,
-  "high_7d": 95000.0,
-  "low_7d": 37353.18,
-  "average_7d": 77212.88,
-  "median_7d": 77133.96,
-  "volatility_7d": 8.207,
-  "total_volume": 15980,
-  "points": 368
-}
-```
-
-`volatility_7d` is the standard deviation of point-to-point returns, in
-percent. All price fields are `null` and `points` is `0` for an item with no
-recorded history yet.
+Returns descriptive statistics for the item (`current_price`, `change_24h`, `change_7d`, `high_7d`, `low_7d`, `average_7d`, `median_7d`, `vwap_7d`, `volatility_7d`, `total_volume`, and `anomalies`).
 
 ### `GET /api/trends/{item_id}`
-
-The trend classification plus every number behind it (see
-[ARCHITECTURE.md](ARCHITECTURE.md) for the scoring formula — this is
-descriptive, not predictive).
-
-```json
-{
-  "item_id": 4151,
-  "classification": "Neutral",
-  "slope_pct_per_day": -0.206,
-  "short_ma": 76769.55,
-  "long_ma": 76927.33,
-  "momentum_pct": 17.25,
-  "volatility_pct": 8.207,
-  "r_squared": 0.008,
-  "points_used": 368
-}
-```
-
-`classification` is one of `Strongly Rising`, `Rising`, `Neutral`,
-`Falling`, `Strongly Falling`.
+Returns the regression slope, short/long moving averages, momentum, volatility, $R^2$, and trend classification (`Strongly Rising`, `Rising`, `Neutral`, `Falling`, `Strongly Falling`).
 
 ---
 
-## Top Movers
+## Market Scanners
 
-### `GET /api/movers?period={24h|7d|14d}&limit={n}`
+### `GET /api/scanner/flips`
+Query params: `min_price`, `max_price`, `min_volume`, `members`, `sort_by` (`limit_profit`, `net_profit`, `roi`, `volume`, `liquidity`), `limit`.
 
-Market-wide gainers, losers, and highest 24h volume, computed from hourly
-whole-market data. Items are filtered for liquidity (price ≥ 100 gp at both
-endpoints of the comparison, ≥ 2,000 units traded in 24h) so dead-item
-manipulation spikes don't dominate. `limit` defaults 10, max 50.
+### `GET /api/scanner/alch`
+Query params: `min_volume`, `members`, `mode` (`manual` or `machine`), `sort_by`, `limit`.
 
-`GET /api/movers?period=24h&limit=1` (truncated):
-
-```json
-{
-  "period": "24h",
-  "gainers": [
-    {
-      "item_id": 25800,
-      "name": "Black dragonhide shield",
-      "icon_url": "/api/icon/25800",
-      "current_price": 256679,
-      "previous_price": 8715,
-      "change_pct": 2845.4,
-      "volume_24h": 80218
-    }
-  ],
-  "losers": [
-    {
-      "item_id": 199,
-      "name": "Grimy guam",
-      "current_price": 256,
-      "previous_price": 46563,
-      "change_pct": -99.45,
-      "volume_24h": 37086
-    }
-  ],
-  "highest_volume": [
-    {
-      "item_id": 12183,
-      "name": "Spirit shards",
-      "current_price": 24,
-      "volume_24h": 324887352
-    }
-  ]
-}
-```
-
-`7d`/`14d` periods need the app to have been collecting hourly data that far
-back; until then their lists are short or empty (24h works from first run).
+### `GET /api/scanner/recipes`
+Query params: `execution_mode` (`patient` or `instant`), `min_volume`, `sort_by`, `limit`.
 
 ---
 
-## Settings
+## Portfolio, Flip Ledger & 8-Slot GE Board
 
-### `GET /api/settings`
-
-```json
-{
-  "update_interval_minutes": "5",
-  "theme": "dark",
-  "default_chart_range": "14d",
-  "user_agent": "RS3-GE-Tracker/1.0 (personal price tracking app; ...)",
-  "collector_autostart": "true",
-  "database_path": ".../database/rs3_tracker.db"
-}
-```
-
-All values are strings. `database_path` is informational (read-only; set via
-the `RS3_DB_PATH` environment variable before startup).
-
-### `PUT /api/settings`
-
-Partial update — send only the keys you're changing; returns the full merged
-settings. Validation per key: `update_interval_minutes` ∈
-`5|10|15|30|60`, `theme` ∈ `dark|light`, `default_chart_range` ∈
-`24h|7d|14d|14d`, `collector_autostart` ∈ `true|false`, `user_agent` length
-10–300. Invalid values → `422`; an empty body → `422`. A changed interval
-takes effect from the next cycle; `collector_autostart` takes effect at next
-startup.
+- `GET /api/portfolio`: Returns active holdings with gross value, 2% GE tax, and net liquidation P&L.
+- `POST /api/portfolio`: Adds a holding (`item_id`, `quantity`, `buy_price_per_item`).
+- `POST /api/portfolio/{port_id}/close`: Closes a full or partial position and logs the realized trade into `flip_history`.
+- `GET /api/portfolio/history` & `POST /api/portfolio/history`: Lists or logs completed flips in the Realized Flip Ledger.
+- `GET /api/ge-slots`, `PUT /api/ge-slots/{slot_index}`, `POST /api/ge-slots/{slot_index}/complete`, `DELETE /api/ge-slots/{slot_index}`: Manages the 8 active Grand Exchange slots and 4-hour buy limit timers.
 
 ---
 
-## Export
+## Recipes, Alerts, Settings & Backup
 
-### `GET /api/export/{item_id}?format={csv|json}&range={range}`
-
-Downloads the item's merged history as a file
-(`Content-Disposition: attachment`).
-
-CSV columns (Excel / Google Sheets / pandas-friendly, CRLF line endings,
-ISO-8601 UTC timestamps):
-
-```csv
-timestamp,item_id,item_name,high_price,low_price,average_price,volume
-2026-08-02 05:00:00,4151,Abyssal whip,77370.95,72001.0,74685.975,23
-```
-
-JSON shape: `{ "item_id", "item_name", "points": [{ "timestamp",
-"datetime_utc", "high_price", "low_price", "average_price", "volume" }] }`.
-
-`format` other than `csv`/`json` → `422`. Load into pandas with
-`pd.read_csv(url_or_file, parse_dates=["timestamp"])`.
+- `GET /api/recipes`, `POST /api/recipes`, `DELETE /api/recipes/{id}`: Custom crafting/combination recipes with Patient and Instant mode margins.
+- `GET /api/alerts`, `POST /api/alerts`, `PUT /api/alerts/{id}`, `DELETE /api/alerts/{id}`: Price, net-margin, and 24h-volume alerts with cooldowns.
+- `GET /api/settings` & `PUT /api/settings`: Reads or updates application settings (`update_interval_minutes`, `theme`, `default_chart_range`, `user_agent`, `collector_autostart`, `show_tooltips`, `discord_webhook_url`).
+- `GET /api/backup/export` & `POST /api/backup/import`: Exports or restores a JSON snapshot of the user's workspace (`tracked_items`, `portfolio`, `flip_history`, `ge_slots`, `recipes`, `alerts`, `settings`).

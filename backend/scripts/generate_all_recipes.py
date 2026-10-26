@@ -4,7 +4,7 @@ import re
 import os
 
 URL = "https://runescape.wiki/api.php"
-HEADERS = {"User-Agent": "Antigravity/1.0"}
+HEADERS = {"User-Agent": "RS3-GE-Tracker/1.3 (+https://github.com/dave-debugs/rs3-ge-tracker)"}
 
 print("Downloading RS Dump to get Item IDs...")
 resp = requests.get("https://chisel.weirdgloop.org/gazproj/gazbot/rs_dump.json", headers=HEADERS)

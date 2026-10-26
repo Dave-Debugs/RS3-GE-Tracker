@@ -18,7 +18,8 @@ from .db.database import Database
 from .db.repository import Repository
 from .logging_config import setup_logging
 from .routes import (
-    export, icons, items, movers, prices, settings, stats, status, tracked, alerts, portfolio, recipes, scanner, updater,
+    export, icons, items, movers, prices, settings, stats, status, tracked,
+    alerts, portfolio, recipes, scanner, updater, ge_slots, backup,
 )
 from .services.updater import cleanup_old_updates
 
@@ -59,7 +60,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="RS3 Grand Exchange Tracker",
-        version="1.2.0",
+        version="1.3.0",
         lifespan=lifespan,
     )
     app.add_middleware(
@@ -69,7 +70,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     for module in (items, tracked, prices, stats, movers, settings, status,
-                   export, icons, alerts, portfolio, recipes, scanner, updater):
+                   export, icons, alerts, portfolio, recipes, scanner,
+                   updater, ge_slots, backup):
         app.include_router(module.router)
 
     @app.get("/api/health")

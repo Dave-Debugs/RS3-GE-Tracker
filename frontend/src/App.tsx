@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import {
@@ -16,11 +16,13 @@ import {
   useCollectNow,
   useAlerts,
   usePortfolio,
+  useGeSlots,
 } from "./hooks";
 import { formatGP, formatPct } from "./lib/format";
 import Header from "./components/Header";
-import PriceChart from "./components/PriceChart";
 import SearchBar from "./components/SearchBar";
+
+const PriceChart = lazy(() => import("./components/PriceChart"));
 import SettingsPanel from "./components/SettingsPanel";
 import AlertsManagerModal from "./components/AlertsManagerModal";
 import GroupModal from "./components/GroupModal";
@@ -34,7 +36,7 @@ import ToastContainer from "./components/ToastContainer";
 import { ToastProvider, useToast } from "./context/ToastContext";
 import type { ChartMode, ChartRange } from "./types";
 
-const RANGES: ChartRange[] = ["1h", "6h", "24h", "7d", "14d", "30d"];
+const RANGES: ChartRange[] = ["1h", "6h", "24h", "7d", "14d", "30d", "90d", "6m", "1y"];
 const MA_OPTIONS = ["1h", "6h", "24h", "7d"];
 
 function AppInner() {
@@ -44,6 +46,7 @@ function AppInner() {
   const { data: trackedData = [] } = useTracked();
   const { data: alertsData = [] } = useAlerts();
   const { data: portfolioData } = usePortfolio();
+  const { data: geSlotsData = [] } = useGeSlots();
   const { toast } = useToast();
 
   const [selectedCategory, setSelectedCategory] = useState<string>("__ALL__");
@@ -57,6 +60,7 @@ function AppInner() {
   const [maKeys, setMaKeys] = useState<string[]>([]);
   const [showVolume, setShowVolume] = useState(false);
   const [showHighLow, setShowHighLow] = useState(false);
+  const [showBollinger, setShowBollinger] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
@@ -132,10 +136,11 @@ function AppInner() {
     }
   }, [settings?.default_chart_range]);
 
-  const dark = (settings?.theme ?? "dark") === "dark";
+  const themeName = settings?.theme ?? "dark";
+  const dark = themeName !== "light";
   useEffect(() => {
-    document.documentElement.dataset.theme = dark ? "dark" : "light";
-  }, [dark]);
+    document.documentElement.dataset.theme = themeName;
+  }, [themeName]);
 
   const chartIds = useMemo(() => {
     if (viewedUntracked && focusedId === viewedUntracked.item_id) {
@@ -274,6 +279,7 @@ function AppInner() {
   else if (seriesError) banner = `Failed to load chart data: ${seriesError.message}`;
 
   const activeAlertsCount = alertsData.filter((a) => a.active).length;
+  const activeGeSlotsCount = geSlotsData.filter((s) => !s.empty).length;
   const showTooltips = settings?.show_item_tooltips !== "false";
 
   const kpiStats = useMemo(() => {
@@ -295,6 +301,18 @@ function AppInner() {
     }
     return { bestFlip, bestGainer, total4hPotential };
   }, [activeCategoryItems]);
+
+  const netPortfolioVal = portfolioData?.net_liquidation_value ?? portfolioData?.current_value ?? 0;
+  const netPortfolioPL = portfolioData?.net_unrealized_profit ?? portfolioData?.unrealized_profit ?? 0;
+  const realizedPL = portfolioData?.realized_profit ?? 0;
+  const geSlotsCapital = useMemo(
+    () =>
+      geSlotsData.reduce(
+        (acc, s) => acc + (s.empty ? 0 : (s.target_price || 0) * (s.quantity || 0)),
+        0
+      ),
+    [geSlotsData]
+  );
 
   return (
     <div className="app">
@@ -392,28 +410,26 @@ function AppInner() {
         <div
           className="kpi-card clickable"
           onClick={() => setActiveTab("portfolio")}
-          title="Click to manage your held items and investments"
+          title="Click to manage your 8 GE Slots, held items, and realized flip ledger"
         >
-          <span className="kpi-label">Portfolio Net Value</span>
+          <span className="kpi-label">Net Portfolio &amp; 8 GE Slots</span>
           <div className="kpi-value">
-            {portfolioData && portfolioData.current_value > 0
-              ? `${formatGP(portfolioData.current_value)} gp`
+            {netPortfolioVal + geSlotsCapital > 0
+              ? `${formatGP(netPortfolioVal + geSlotsCapital)} gp`
               : "0 gp"}
           </div>
           <span
             className={`kpi-sub ${
-              portfolioData && portfolioData.unrealized_profit > 0
+              netPortfolioPL + realizedPL > 0
                 ? "up"
-                : portfolioData && portfolioData.unrealized_profit < 0
+                : netPortfolioPL + realizedPL < 0
                 ? "down"
                 : ""
             }`}
           >
-            {portfolioData && portfolioData.items.length > 0
-              ? `${portfolioData.unrealized_profit >= 0 ? "+" : ""}${formatGP(
-                  portfolioData.unrealized_profit
-                )} gp P/L (${portfolioData.items.length} lots)`
-              : "Track held investments →"}
+            {portfolioData && (portfolioData.items.length > 0 || activeGeSlotsCount > 0 || realizedPL !== 0)
+              ? `Unrealized ${netPortfolioPL >= 0 ? "+" : ""}${formatGP(netPortfolioPL)} · Realized ${realizedPL >= 0 ? "+" : ""}${formatGP(realizedPL)} (${activeGeSlotsCount}/8 slots)`
+              : "Track 8 GE slots & investments →"}
           </span>
         </div>
       </div>
@@ -432,7 +448,7 @@ function AppInner() {
           className={`nav-tab ${activeTab === "scanner" ? "active" : ""}`}
           onClick={() => setActiveTab("scanner")}
         >
-          <span className="nav-tab-label">Flips &amp; High Alch</span>
+          <span className="nav-tab-label">Flips, Alch &amp; Arbitrage</span>
           <span className="nav-tab-pill">Scanner</span>
         </button>
         <button
@@ -440,9 +456,11 @@ function AppInner() {
           className={`nav-tab ${activeTab === "portfolio" ? "active" : ""}`}
           onClick={() => setActiveTab("portfolio")}
         >
-          <span className="nav-tab-label">Portfolio</span>
-          {portfolioData && portfolioData.items.length > 0 && (
-            <span className="nav-tab-badge">{portfolioData.items.length}</span>
+          <span className="nav-tab-label">Portfolio &amp; 8 GE Slots</span>
+          {((portfolioData && portfolioData.items.length > 0) || activeGeSlotsCount > 0) && (
+            <span className="nav-tab-badge">
+              {(portfolioData?.items.length || 0) + activeGeSlotsCount}
+            </span>
           )}
         </button>
         <button
@@ -586,6 +604,18 @@ function AppInner() {
                       />{" "}
                       High/Low
                     </label>
+                    <label
+                      className={single && mode === "price" ? "" : "disabled"}
+                      title="Bollinger Bands (±2σ volatility envelope) & Volume-Weighted Average Price (VWAP)"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={showBollinger}
+                        disabled={!single || mode !== "price"}
+                        onChange={(e) => setShowBollinger(e.target.checked)}
+                      />{" "}
+                      ±2σ Bands &amp; VWAP
+                    </label>
                     {MA_OPTIONS.map((k) => (
                       <label
                         key={k}
@@ -618,25 +648,39 @@ function AppInner() {
                   </div>
                 </div>
 
-                <PriceChart
-                  series={series}
-                  mode={mode}
-                  showVolume={showVolume && single}
-                  showHighLow={showHighLow && single}
-                  maKeys={single ? maKeys : []}
-                  dark={dark}
-                  onToggleItem={(id) =>
-                    setSelectedIds((s) => {
-                      const n = new Set(s);
-                      n.delete(id);
-                      return n;
-                    })
+                <Suspense
+                  fallback={
+                    <div
+                      className="chart-canvas"
+                      style={{ display: "grid", placeItems: "center", color: "var(--fg-dim)" }}
+                    >
+                      Loading chart engine…
+                    </div>
                   }
-                  onFocusItem={(id) => {
-                    setViewedUntracked(null);
-                    setFocusedId(id);
-                  }}
-                />
+                >
+                  <PriceChart
+                    series={series}
+                    mode={mode}
+                    showVolume={showVolume && single}
+                    showHighLow={showHighLow && single}
+                    showBollinger={showBollinger && single}
+                    maKeys={single ? maKeys : []}
+                    dark={dark}
+                    alerts={alertsData}
+                    portfolioItems={portfolioData?.items || []}
+                    onToggleItem={(id) =>
+                      setSelectedIds((s) => {
+                        const n = new Set(s);
+                        n.delete(id);
+                        return n;
+                      })
+                    }
+                    onFocusItem={(id) => {
+                      setViewedUntracked(null);
+                      setFocusedId(id);
+                    }}
+                  />
+                </Suspense>
               </section>
 
               <TrackedList

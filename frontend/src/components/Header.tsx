@@ -17,7 +17,7 @@ export default function Header({ status, alertsCount = 0, onOpenSettings, onOpen
         <div>
           <h1>RS3 Grand Exchange Tracker</h1>
           <span className="header-sub">
-            30-day rolling market intelligence · Flipping &amp; Alchemy terminal · Press{" "}
+            1-year rolling market intelligence · Flipping, Alchemy &amp; Arbitrage terminal · Press{" "}
             <kbd className="kbd-hint">/</kbd> to search
           </span>
         </div>

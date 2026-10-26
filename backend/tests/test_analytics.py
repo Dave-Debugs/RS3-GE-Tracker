@@ -67,13 +67,14 @@ def test_moving_average_trailing_window():
     assert [p["value"] for p in ma] == [10, 15, 20, 30]
 
 def test_merge_sources_prefers_finer_resolution():
-    coarse = {"timestamp": 1000, "average_price": 50, "source": "ts6h"}
+    coarse1d = {"timestamp": 1000, "average_price": 45, "source": "ts1d"}
+    coarse6h = {"timestamp": 1000, "average_price": 50, "source": "ts6h"}
     fine = {"timestamp": 1000, "average_price": 55, "source": "5m"}
-    merged = merge_sources([coarse, fine])
+    merged = merge_sources([coarse1d, coarse6h, fine])
     assert len(merged) == 1 and merged[0]["average_price"] == 55
 
 def test_downsample_keeps_endpoints():
     points = make_points(0, 300, list(range(5000)))
     thinned = downsample(points, max_points=1000)
-    assert len(thinned) > 0
+    assert len(thinned) == 1000
     assert thinned[0] == points[0] and thinned[-1] == points[-1]

@@ -1,6 +1,6 @@
 #define MyAppName "RS3 GE Tracker"
 #ifndef MyAppVersion
-#define MyAppVersion "1.2"
+#define MyAppVersion "1.3"
 #endif
 #define MyAppPublisher "Dave-Debugs"
 #define MyAppURL "https://github.com/Dave-Debugs/RS3-GE-Tracker"

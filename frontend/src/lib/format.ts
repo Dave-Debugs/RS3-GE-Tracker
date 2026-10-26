@@ -15,12 +15,40 @@ function trimZeros(s: string): string {
   return s.replace(/\.0+$|(\.\d*?)0+$/, "$1");
 }
 
+/**
+ * Parses RS3 shorthand GP or quantity strings like "250k", "12.5m", "1.2b", "5,000" into an integer.
+ */
+export function parseGPInput(raw: string | number | null | undefined): number | null {
+  if (raw == null) return null;
+  if (typeof raw === "number") return Number.isFinite(raw) ? Math.round(raw) : null;
+  const cleaned = raw.trim().toLowerCase().replace(/[,_\s]/g, "").replace(/gp$/i, "");
+  if (!cleaned) return null;
+  const match = cleaned.match(/^(-?\d+(?:\.\d+)?)([kmb])?$/);
+  if (!match) return null;
+  const num = parseFloat(match[1]);
+  if (Number.isNaN(num)) return null;
+  const suffix = match[2];
+  let mult = 1;
+  if (suffix === "k") mult = 1_000;
+  else if (suffix === "m") mult = 1_000_000;
+  else if (suffix === "b") mult = 1_000_000_000;
+  return Math.round(num * mult);
+}
+
+export function formatDurationSeconds(seconds: number | null | undefined): string {
+  if (seconds == null || seconds <= 0) return "Ready";
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  if (hrs > 0) {
+    return `${hrs}h ${String(mins).padStart(2, "0")}m ${String(secs).padStart(2, "0")}s`;
+  }
+  return `${mins}m ${String(secs).padStart(2, "0")}s`;
+}
 
 export function formatGPExact(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
-  return (
-    Math.round(value).toLocaleString("en-US") + " gp"
-  );
+  return Math.round(value).toLocaleString("en-US") + " gp";
 }
 
 export function formatPct(value: number | null | undefined): string {

@@ -1,6 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import { ChartRange, Settings, PortfolioStats, Recipe, Alert, FlipScannerItem, AlchScannerItem } from "./types";
+import type {
+  ChartRange,
+  PortfolioStats,
+  FlipHistoryResponse,
+  GeSlot,
+  Recipe,
+  Alert,
+  AlertMetric,
+  FlipScannerItem,
+  AlchScannerItem,
+  ArbitrageRecipeItem,
+} from "./types";
 
 export function useStatus() {
   return useQuery({
@@ -161,6 +172,34 @@ export function useAddPortfolioItem() {
   });
 }
 
+export function useClosePortfolioItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      port_id: number;
+      sell_price_per_item: number;
+      quantity_sold?: number;
+      notes?: string;
+    }) => {
+      const res = await fetch(`/api/portfolio/${data.port_id}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sell_price_per_item: data.sell_price_per_item,
+          quantity_sold: data.quantity_sold,
+          notes: data.notes,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to close portfolio position");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["portfolio"] });
+      qc.invalidateQueries({ queryKey: ["flip_history"] });
+    },
+  });
+}
+
 export function useDeletePortfolioItem() {
   const qc = useQueryClient();
   return useMutation({
@@ -169,6 +208,134 @@ export function useDeletePortfolioItem() {
       if (!res.ok) throw new Error("Failed to delete portfolio item");
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["portfolio"] }),
+  });
+}
+
+export function useFlipHistory() {
+  return useQuery({
+    queryKey: ["flip_history"],
+    queryFn: async () => {
+      const res = await fetch("/api/portfolio/history");
+      if (!res.ok) throw new Error("Failed to fetch flip history");
+      return res.json() as Promise<FlipHistoryResponse>;
+    },
+    refetchInterval: 60000,
+  });
+}
+
+export function useAddFlipHistory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      item_id: number;
+      quantity: number;
+      buy_price: number;
+      sell_price: number;
+      notes?: string;
+    }) => {
+      const res = await fetch("/api/portfolio/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to log flip");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["flip_history"] });
+      qc.invalidateQueries({ queryKey: ["portfolio"] });
+    },
+  });
+}
+
+export function useDeleteFlipHistory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/portfolio/history/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete flip record");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["flip_history"] });
+      qc.invalidateQueries({ queryKey: ["portfolio"] });
+    },
+  });
+}
+
+export function useGeSlots() {
+  return useQuery({
+    queryKey: ["ge_slots"],
+    queryFn: async () => {
+      const res = await fetch("/api/ge-slots");
+      if (!res.ok) throw new Error("Failed to fetch GE slots");
+      const data = await res.json();
+      return data.slots as GeSlot[];
+    },
+    refetchInterval: 15000,
+  });
+}
+
+export function useUpsertGeSlot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      slot_index: number;
+      item_id: number;
+      offer_type: "buy" | "sell";
+      target_price: number;
+      quantity: number;
+      filled_qty?: number;
+      buy_cost_ref?: number | null;
+      reset_timer?: boolean;
+      notes?: string | null;
+    }) => {
+      const { slot_index, ...body } = data;
+      const res = await fetch(`/api/ge-slots/${slot_index}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Failed to update GE slot");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ge_slots"] }),
+  });
+}
+
+export function useCompleteGeSlot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      slot_index: number;
+      sell_price?: number;
+      quantity?: number;
+      action?: "portfolio" | "flip" | "auto";
+    }) => {
+      const { slot_index, ...body } = data;
+      const res = await fetch(`/api/ge-slots/${slot_index}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Failed to complete GE slot");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ge_slots"] });
+      qc.invalidateQueries({ queryKey: ["portfolio"] });
+      qc.invalidateQueries({ queryKey: ["flip_history"] });
+    },
+  });
+}
+
+export function useClearGeSlot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (slot_index: number) => {
+      const res = await fetch(`/api/ge-slots/${slot_index}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to clear GE slot");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ge_slots"] }),
   });
 }
 
@@ -227,7 +394,13 @@ export function useAlerts() {
 export function useCreateAlert() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { item_id: number; condition: string; threshold_price: number }) => {
+    mutationFn: async (data: {
+      item_id: number;
+      condition: string;
+      threshold_price: number;
+      metric?: AlertMetric;
+      cooldown_minutes?: number;
+    }) => {
       const res = await fetch("/api/alerts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -271,6 +444,7 @@ export function useFlipScanner(params: {
   minVolume: number;
   members: boolean | null;
   sortBy: string;
+  enabled?: boolean;
 }) {
   return useQuery({
     queryKey: ["scanner", "flips", params],
@@ -287,6 +461,7 @@ export function useFlipScanner(params: {
       const data = await res.json();
       return data.items as FlipScannerItem[];
     },
+    enabled: params.enabled ?? true,
     refetchInterval: 60000,
   });
 }
@@ -295,6 +470,8 @@ export function useAlchScanner(params: {
   minVolume: number;
   members: boolean | null;
   sortBy: string;
+  mode: "manual" | "machine";
+  enabled?: boolean;
 }) {
   return useQuery({
     queryKey: ["scanner", "alch", params],
@@ -303,11 +480,44 @@ export function useAlchScanner(params: {
       if (params.minVolume) qs.set("min_volume", String(params.minVolume));
       if (params.members !== null) qs.set("members", String(params.members));
       qs.set("sort_by", params.sortBy);
+      qs.set("mode", params.mode);
       qs.set("limit", "60");
       const res = await fetch(`/api/scanner/alch?${qs.toString()}`);
       if (!res.ok) throw new Error("Failed to scan alchemy");
-      return (await res.json()) as { nature_rune_price: number; items: AlchScannerItem[] };
+      return (await res.json()) as {
+        mode: string;
+        nature_rune_price: number;
+        fire_rune_price: number;
+        divine_charge_price: number;
+        cast_cost: number;
+        items: AlchScannerItem[];
+      };
     },
+    enabled: params.enabled ?? true,
+    refetchInterval: 60000,
+  });
+}
+
+export function useRecipeScanner(params: {
+  executionMode: "patient" | "instant";
+  minVolume: number;
+  sortBy: string;
+  enabled?: boolean;
+}) {
+  return useQuery({
+    queryKey: ["scanner", "recipes", params],
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      qs.set("execution_mode", params.executionMode);
+      if (params.minVolume) qs.set("min_volume", String(params.minVolume));
+      qs.set("sort_by", params.sortBy);
+      qs.set("limit", "60");
+      const res = await fetch(`/api/scanner/recipes?${qs.toString()}`);
+      if (!res.ok) throw new Error("Failed to scan crafting arbitrage");
+      const data = await res.json();
+      return data.items as ArbitrageRecipeItem[];
+    },
+    enabled: params.enabled ?? true,
     refetchInterval: 60000,
   });
 }

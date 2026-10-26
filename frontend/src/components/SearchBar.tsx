@@ -89,7 +89,7 @@ export default function SearchBar({ trackedIds, onTrack, onSelect }: Props) {
               </div>
               <div className="search-price" style={{ textAlign: "right" }}>
                 <div>{formatGP(r.current_price)}</div>
-                <div style={{ fontSize: "0.8em", color: "var(--text-muted)" }}>
+                <div style={{ fontSize: "0.8em", color: "var(--fg-dim)" }}>
                   B: {r.buy_price ? formatGP(r.buy_price) : "-"} | S: {r.sell_price ? formatGP(r.sell_price) : "-"}
                 </div>
               </div>

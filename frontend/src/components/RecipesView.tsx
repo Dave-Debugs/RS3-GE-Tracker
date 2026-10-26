@@ -18,6 +18,7 @@ export default function RecipesView() {
 
   const tooltipsEnabled = (settings?.show_item_tooltips ?? "true") !== "false";
 
+  const [execMode, setExecMode] = useState<"patient" | "instant">("patient");
   const [name, setName] = useState("");
   const [outId, setOutId] = useState("");
   const [outQty, setOutQty] = useState("1");
@@ -103,12 +104,30 @@ export default function RecipesView() {
 
   return (
     <div className="card recipes-card">
-      <div className="card-head">
+      <div className="card-head" style={{ flexWrap: "wrap", gap: "12px" }}>
         <div>
-          <h2>Crafting &amp; Flipping Recipes</h2>
+          <h2>Crafting &amp; Processing Recipes</h2>
           <span className="muted" style={{ fontSize: "12px" }}>
-            Track profit margins for potions, smithing, processing, and item combination flips
+            Track net margins (after 2% GE seller tax) for potions, smithing, decanting, and item combinations
           </span>
+        </div>
+        <div className="seg">
+          <button
+            type="button"
+            className={"seg-btn" + (execMode === "patient" ? " active" : "")}
+            onClick={() => setExecMode("patient")}
+            title="Slow-buy ingredients at Instant Sell (Low) & slow-sell output at Instant Buy (High)"
+          >
+            Patient Mode (Slow Buy / Sell)
+          </button>
+          <button
+            type="button"
+            className={"seg-btn" + (execMode === "instant" ? " active" : "")}
+            onClick={() => setExecMode("instant")}
+            title="Insta-buy ingredients at High & insta-sell output at Low"
+          >
+            Instant Mode (Insta-Buy / Sell)
+          </button>
         </div>
       </div>
 
@@ -206,7 +225,18 @@ export default function RecipesView() {
 
       <div className="recipe-grid">
         {recipes.map((r) => {
-          const roi = r.cost > 0 ? ((r.profit / r.cost) * 100).toFixed(1) : "0.0";
+          const isPatient = execMode === "patient";
+          const activeCost = isPatient ? (r.patient_cost ?? r.cost) : r.cost;
+          const activeTax = isPatient ? (r.patient_tax ?? r.tax ?? 0) : (r.tax ?? 0);
+          const activeProfit = isPatient ? (r.patient_profit ?? r.profit) : r.profit;
+          const activeOutPrice = isPatient
+            ? (r.output_buy_price || r.output_sell_price || 0)
+            : (r.output_sell_price || r.output_buy_price || 0);
+          const limitProfit = isPatient
+            ? r.limit_profit_patient_4h
+            : r.limit_profit_instant_4h;
+          const roi = activeCost > 0 ? ((activeProfit / activeCost) * 100).toFixed(1) : "0.0";
+
           return (
             <div key={r.id} className="recipe-card">
               <div className="recipe-header">
@@ -239,32 +269,37 @@ export default function RecipesView() {
 
               <div className="recipe-flow">
                 <div className="recipe-ing-list">
-                  {r.ingredients.map((ing: RecipeIngredient, i: number) => (
-                    <div key={i} className="recipe-ing">
-                      <ItemTooltip
-                        itemId={ing.item_id}
-                        name={ing.name}
-                        iconUrl={ing.icon_url}
-                        description={ing.description}
-                        members={ing.members}
-                        buyLimit={ing.buy_limit}
-                        highAlch={ing.highalch}
-                        buyPrice={ing.input_buy_price}
-                        sellPrice={ing.input_sell_price}
-                        wikiUrl={ing.wiki_url}
-                        enabled={tooltipsEnabled}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                          {ing.icon_url && <img src={ing.icon_url} alt="" className="item-icon sm" />}
-                          <span className="muted" style={{ fontWeight: 600 }}>{ing.qty}x</span>
-                          <span className="tooltip-target-text">{ing.name}</span>
-                        </div>
-                      </ItemTooltip>
-                      <span className="muted tabular-nums" style={{ fontSize: "12.5px" }}>
-                        {formatGP(ing.input_buy_price || 0)}
-                      </span>
-                    </div>
-                  ))}
+                  {r.ingredients.map((ing: RecipeIngredient, i: number) => {
+                    const unitCost = isPatient
+                      ? (ing.input_sell_price || ing.input_buy_price || 0)
+                      : (ing.input_buy_price || ing.input_sell_price || 0);
+                    return (
+                      <div key={i} className="recipe-ing">
+                        <ItemTooltip
+                          itemId={ing.item_id}
+                          name={ing.name}
+                          iconUrl={ing.icon_url}
+                          description={ing.description}
+                          members={ing.members}
+                          buyLimit={ing.buy_limit}
+                          highAlch={ing.highalch}
+                          buyPrice={ing.input_buy_price}
+                          sellPrice={ing.input_sell_price}
+                          wikiUrl={ing.wiki_url}
+                          enabled={tooltipsEnabled}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            {ing.icon_url && <img src={ing.icon_url} alt="" className="item-icon sm" />}
+                            <span className="muted" style={{ fontWeight: 600 }}>{ing.qty}x</span>
+                            <span className="tooltip-target-text">{ing.name}</span>
+                          </div>
+                        </ItemTooltip>
+                        <span className="muted tabular-nums" style={{ fontSize: "12.5px" }}>
+                          {formatGP(unitCost)}
+                        </span>
+                      </div>
+                    );
+                  })}
                   <div
                     className="recipe-ing"
                     style={{
@@ -274,10 +309,14 @@ export default function RecipesView() {
                       fontWeight: 600,
                     }}
                   >
-                    <span>Total Cost:</span>
+                    <span>Input Cost:</span>
                     <span className="tabular-nums" style={{ color: "var(--down)" }}>
-                      -{formatGP(r.cost)}
+                      -{formatGP(activeCost)}
                     </span>
+                  </div>
+                  <div className="recipe-ing" style={{ fontSize: "11.5px" }}>
+                    <span className="muted">2% GE Tax:</span>
+                    <span className="muted tabular-nums">-{formatGP(activeTax)}</span>
                   </div>
                 </div>
                 <div className="recipe-arrow">➔</div>
@@ -301,21 +340,32 @@ export default function RecipesView() {
                     </span>
                   </ItemTooltip>
                   <span className="tabular-nums" style={{ color: "var(--up)", fontSize: "13px", fontWeight: 700 }}>
-                    +{formatGP(r.output_sell_price || 0)} ea
+                    +{formatGP(activeOutPrice)} ea
                   </span>
                 </div>
               </div>
 
-              <div className={`recipe-profit-badge ${r.profit > 0 ? "up" : r.profit < 0 ? "down" : ""}`}>
-                Margin: {r.profit > 0 ? "+" : ""}
-                {formatGP(r.profit)} ({roi}% ROI)
+              <div
+                className={`recipe-profit-badge ${activeProfit > 0 ? "up" : activeProfit < 0 ? "down" : ""}`}
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+              >
+                <span>
+                  Net Margin: {activeProfit > 0 ? "+" : ""}
+                  {formatGP(activeProfit)} ({roi}% ROI)
+                </span>
+                {limitProfit != null && (
+                  <span style={{ fontSize: "11.5px", opacity: 0.9 }}>
+                    4h Cap ({r.max_crafts_4h}x): {limitProfit > 0 ? "+" : ""}
+                    {formatGP(limitProfit)} gp
+                  </span>
+                )}
               </div>
             </div>
           );
         })}
         {recipes.length === 0 && (
           <div className="empty-hint muted" style={{ gridColumn: "1 / -1", textAlign: "center", padding: "32px" }}>
-            No crafting recipes yet. Create one above to track crafting &amp; processing margins!
+            No custom recipes saved yet. Create one above or click <strong>+ Save Recipe</strong> from the Crafting &amp; Arbitrage Scanner!
           </div>
         )}
       </div>

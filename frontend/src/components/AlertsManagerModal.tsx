@@ -7,6 +7,14 @@ interface Props {
   onClose: () => void;
 }
 
+const METRIC_SHORT: Record<string, string> = {
+  either: "Price",
+  high: "Insta-Buy",
+  low: "Insta-Sell",
+  net_margin: "Net Margin",
+  volume_24h: "24h Vol",
+};
+
 export default function AlertsManagerModal({ open, onClose }: Props) {
   const { data: alerts = [], isLoading } = useAlerts();
   const updateAlertMutation = useUpdateAlert();
@@ -39,12 +47,12 @@ export default function AlertsManagerModal({ open, onClose }: Props) {
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ width: "620px" }}>
+      <div className="modal" style={{ width: "640px" }}>
         <div className="card-head">
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <span style={{ fontSize: "18px" }}>🔔</span>
             <h2 style={{ margin: 0 }}>
-              Price Alerts <span className="count-badge">{alerts.length}</span>
+              Price &amp; Margin Alerts <span className="count-badge">{alerts.length}</span>
             </h2>
           </div>
           <button className="icon-btn" onClick={onClose}>✕</button>
@@ -56,7 +64,7 @@ export default function AlertsManagerModal({ open, onClose }: Props) {
           <div className="empty-hint muted" style={{ textAlign: "center", padding: "32px 16px" }}>
             <p style={{ margin: "0 0 8px", fontSize: "15px", fontWeight: 600 }}>No price alerts configured</p>
             <p style={{ margin: 0, fontSize: "12.5px" }}>
-              Click the 🔔 icon next to any tracked item to set high/low price triggers.
+              Click the 🔔 icon next to any tracked item to set Instant Buy, Instant Sell, Net Flip Margin, or Volume triggers.
             </p>
           </div>
         ) : (
@@ -64,6 +72,8 @@ export default function AlertsManagerModal({ open, onClose }: Props) {
             {alerts.map((a) => {
               const itemName = a.name || `Item ${a.item_id}`;
               const isTriggered = !a.active && a.last_triggered;
+              const metricKey = a.metric || "either";
+              const metricTag = METRIC_SHORT[metricKey] || "Price";
               return (
                 <div
                   key={a.id}
@@ -90,16 +100,17 @@ export default function AlertsManagerModal({ open, onClose }: Props) {
                         {itemName}
                       </div>
                       <div className="muted" style={{ fontSize: "11px" }}>
-                        ID: {a.item_id}
-                        {a.current_price ? ` · Live: ${formatGP(a.current_price)}` : ""}
-                        {a.last_triggered ? ` · Triggered: ${relativeTime(a.last_triggered)}` : ""}
+                        {a.current_price ? `Live: ${formatGP(a.current_price)}` : `ID: ${a.item_id}`}
+                        {a.latest_net_margin != null ? ` · Margin: +${formatGP(a.latest_net_margin)}` : ""}
+                        {a.cooldown_minutes && a.cooldown_minutes > 0 ? ` · Every ${a.cooldown_minutes}m` : " · One-shot"}
+                        {a.last_triggered ? ` · Last: ${relativeTime(a.last_triggered)}` : ""}
                       </div>
                     </div>
                   </div>
 
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--accent)" }}>
-                      {a.condition} {formatGP(a.threshold_price)}
+                      {metricTag} {a.condition} {formatGP(a.threshold_price)}
                     </div>
                     <div>
                       {a.active ? (

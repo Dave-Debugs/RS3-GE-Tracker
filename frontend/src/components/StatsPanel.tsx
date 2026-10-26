@@ -19,15 +19,18 @@ export default function StatsPanel({ name, itemId, isTracked = true, stats, tren
       </section>
     );
   }
+  const zPrice = stats.price_zscore ?? 0;
+  const zVol = stats.volume_zscore ?? 0;
   const rows: [string, string, string?][] = [
     ["Current price", formatGPExact(stats.current_price)],
     ["24H change", formatPct(stats.change_24h), changeClass(stats.change_24h)],
     ["7D change", formatPct(stats.change_7d), changeClass(stats.change_7d)],
-    ["7D high", formatGP(stats.high_7d)],
-    ["7D low", formatGP(stats.low_7d)],
+    ["7D VWAP", formatGP(stats.vwap_7d ?? stats.average_7d)],
+    ["7D high / low", `${formatGP(stats.high_7d)} / ${formatGP(stats.low_7d)}`],
     ["7D average", formatGP(stats.average_7d)],
     ["7D median", formatGP(stats.median_7d)],
     ["7D volatility", stats.volatility_7d != null ? `${stats.volatility_7d}%` : "—"],
+    ["Price Z-score", `${zPrice > 0 ? "+" : ""}${zPrice.toFixed(2)}σ`, Math.abs(zPrice) >= 2 ? (zPrice > 0 ? "up" : "down") : ""],
     ["Volume (7D)", formatVolume(stats.total_volume)],
   ];
   const trendCls = trend?.classification.includes("Rising") ? "up"
@@ -35,19 +38,35 @@ export default function StatsPanel({ name, itemId, isTracked = true, stats, tren
   return (
     <section className="card stats-card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "8px" }}>
-        <div>
+        <div style={{ minWidth: 0 }}>
           <h2 style={{ margin: 0 }}>{name}</h2>
-          {!isTracked && (
-            <span className="pill" style={{ background: "rgba(232, 182, 76, 0.15)", color: "var(--accent)", fontSize: "10px", padding: "1px 6px", marginTop: "4px", display: "inline-block" }}>
-              Preview Mode
-            </span>
-          )}
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "4px" }}>
+            {!isTracked && (
+              <span className="pill" style={{ background: "var(--accent-soft)", color: "var(--accent)", fontSize: "10px", padding: "1px 6px" }}>
+                Preview Mode
+              </span>
+            )}
+            {stats.anomaly_label && (
+              <span
+                className="pill"
+                style={{
+                  background: stats.anomaly_label.includes("Dump") || stats.anomaly_label.includes("Dip") ? "var(--down-soft)" : "var(--warn-soft)",
+                  color: stats.anomaly_label.includes("Dump") || stats.anomaly_label.includes("Dip") ? "var(--down)" : "var(--warn)",
+                  fontSize: "10px",
+                  padding: "1px 8px",
+                }}
+                title={`Price Z=${zPrice}σ, Volume Z=${zVol}σ`}
+              >
+                ⚡ {stats.anomaly_label}
+              </span>
+            )}
+          </div>
         </div>
         {!isTracked && itemId && onTrack && (
           <button
             type="button"
             className="btn btn-primary"
-            style={{ fontSize: "11px", padding: "4px 8px" }}
+            style={{ fontSize: "11px", padding: "4px 8px", flexShrink: 0, whiteSpace: "nowrap" }}
             onClick={() => onTrack({ item_id: itemId, name })}
           >
             + Track Item
@@ -57,9 +76,14 @@ export default function StatsPanel({ name, itemId, isTracked = true, stats, tren
       {trend && (
         <div className={`trend-banner ${trendCls}`}>
           <span className="trend-label">{trend.classification}</span>
+          {trend.r_squared > 0 && (
+            <span className="muted" style={{ fontSize: "11px", marginLeft: "8px" }}>
+              R² = {trend.r_squared}
+            </span>
+          )}
         </div>
       )}
-      <dl className="stats-grid">
+      <dl className="stats-grid tabular-nums">
         {rows.map(([label, value, cls]) => (
           <div key={label} className="stat">
             <dt>{label}</dt>

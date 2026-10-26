@@ -1,1 +1,2 @@
-6cee495e0104e7d17d36b263c0b40a40e5e0e691ca71f000dd4adae57a28cebc  RS3-GE-Tracker-Setup-1.2.exe
+b977fa9b8f03540be0af40324a1065d6198884f4c9c3725ea407134fa5c013b2  RS3-GE-Tracker-Setup-1.3.exe
+cc11eb648c133ef7e38958780b65af1c2af8e4d3e5c3dea35a1e532ad5454f66  RS3Tracker.exe
